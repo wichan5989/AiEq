@@ -8,6 +8,7 @@ import android.media.AudioManager
 import android.content.Context
 import android.media.MediaRecorder
 import android.os.Bundle
+import androidx.compose.ui.unit.sp
 import android.content.pm.ActivityInfo
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.activity.ComponentActivity
@@ -197,12 +198,22 @@ class MainActivity:ComponentActivity() {
        Column(Modifier.weight(2f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
         Text("31-BAND GEQ · READ-ONLY PREVIEW",color=gold,style=MaterialTheme.typography.labelSmall)
         Row(Modifier.fillMaxWidth().weight(1f),horizontalArrangement=Arrangement.spacedBy(2.dp)) {
-         detector.centers.forEach { hz ->
+         detector.centers.forEachIndexed { index,hz ->
           Column(Modifier.weight(1f).fillMaxHeight(),horizontalAlignment=Alignment.CenterHorizontally) {
-           Text("0",color=muted,style=MaterialTheme.typography.labelSmall)
+           Text("0",color=muted,fontSize=9.sp,maxLines=1)
            Box(Modifier.weight(1f).width(2.dp).background(Color.DarkGray))
            Box(Modifier.fillMaxWidth().height(7.dp).background(Color.LightGray))
-           Text(if(hz>=1000) "${hz/1000}k" else hz.toInt().toString(),color=muted,style=MaterialTheme.typography.labelSmall,maxLines=1)
+           val frequencyLabel = when {
+            hz == 31.5f -> "31.5"
+            hz < 1000f -> hz.toInt().toString()
+            hz == 1250f -> "1k25"
+            hz == 3150f -> "3k15"
+            hz == 6300f -> "6k3"
+            hz == 12500f -> "12k5"
+            else -> "${(hz/1000f).toInt()}k"
+           }
+           Text(if(index%2==0) frequencyLabel else " ",color=muted,fontSize=8.sp,maxLines=1,softWrap=false)
+           Text(if(index%2!=0) frequencyLabel else " ",color=muted,fontSize=8.sp,maxLines=1,softWrap=false)
           }
          }
         }
@@ -212,7 +223,7 @@ class MainActivity:ComponentActivity() {
        Text("AI FEEDBACK ADVISOR",color=gold,fontWeight=FontWeight.Bold)
        Text("RMS ${"%.1f".format(captureHealth.rmsDbfs)} / PEAK ${"%.1f".format(captureHealth.peakDbfs)} dBFS",color=Color.White,style=MaterialTheme.typography.labelSmall)
        LinearProgressIndicator(progress=((captureHealth.rmsDbfs+60.0)/60.0).coerceIn(0.0,1.0).toFloat(),modifier=Modifier.fillMaxWidth())
-       Text(if(liveSession.canUseForAdvice && candidate!=null) "DETECTED: ${candidate!!.hz} Hz" else "Waiting for verified audio frames",color=muted)
+       Text(when { !detecting -> "RTA stopped · start microphone capture"; !liveSession.canUseForAdvice -> "Checking audio frames / input route"; candidate!=null -> "DETECTED: ${candidate!!.hz} Hz"; else -> "Audio verified · listening for persistent feedback" },color=if(liveSession.canUseForAdvice) Color(0xFF58D69C) else muted,style=MaterialTheme.typography.bodySmall)
        Text("Mode: ${aiMode.name}",color=gold)
        val current=suggestionQueue.current()
        Text(current?.let{"${it.hz} Hz  ${it.cutDb} dB  ${it.status}"} ?: "No pending suggestion",color=Color.White)
