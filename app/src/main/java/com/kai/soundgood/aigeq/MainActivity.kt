@@ -8,6 +8,8 @@ import android.media.AudioManager
 import android.content.Context
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.content.pm.ActivityInfo
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -35,9 +37,10 @@ private val panel=Color(0xFF20242A)
 private val gold=Color(0xFFD9AA59)
 private val muted=Color(0xFF9CA3AF)
 class MainActivity:ComponentActivity() {
- override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); setContent { Screen() } }
+ override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE; setContent { Screen() } }
  @Composable private fun Screen() {
   val scope= rememberCoroutineScope()
+  var advancedView by remember { mutableStateOf(false) }
   var connected by remember { mutableStateOf(false) }
   var detecting by remember { mutableStateOf(false) }
   var candidate by remember { mutableStateOf<Candidate?>(null) }
@@ -167,7 +170,64 @@ class MainActivity:ComponentActivity() {
   }
   MaterialTheme(colorScheme=darkColorScheme(primary=gold,background=bg,surface=panel,onBackground=Color.White,onSurface=Color.White)) {
    Box(Modifier.fillMaxSize().background(bg)) {
+   if(!advancedView) {
+    Column(Modifier.fillMaxSize().padding(8.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+     Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+      Text("KAI SOUNDGOOD  /  Ai GEQ",color=gold,fontWeight=FontWeight.Black)
+      Text(if(connected) "M32 OSC REPLIED" else "M32 OFFLINE",color=if(connected) Color(0xFF58D69C) else muted)
+      Text("READ ONLY · EQ LOCKED",color=gold)
+      Spacer(Modifier.weight(1f))
+      OutlinedButton(onClick={advancedView=true},contentPadding=PaddingValues(horizontal=10.dp)) {Text("SETTINGS / ADVANCED")}
+     }
+     Row(Modifier.fillMaxWidth().weight(1f),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+      Column(Modifier.weight(4f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+       Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        Text(target.label,color=gold,fontWeight=FontWeight.Bold)
+        OutlinedButton(onClick={if(targetNumber>1){targetNumber--;resetApproval()}},contentPadding=PaddingValues(horizontal=8.dp)) {Text("−")}
+        OutlinedButton(onClick={if(targetNumber<maxTarget){targetNumber++;resetApproval()}},contentPadding=PaddingValues(horizontal=8.dp)) {Text("+")}
+        Text("INPUT: ${selectedDevice?.name ?: "Android default"}",color=muted,style=MaterialTheme.typography.labelSmall)
+        Spacer(Modifier.weight(1f))
+        Button(onClick={if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=!detecting else permission.launch(Manifest.permission.RECORD_AUDIO)},contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(detecting) "STOP RTA" else "START RTA")}
+       }
+       Column(Modifier.weight(3f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
+        Text("LIVE RTA · ANDROID MIC / USB AUDIO",color=gold,style=MaterialTheme.typography.labelSmall)
+        RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxWidth().weight(1f))
+        RtaFrequencyAxis(Modifier.fillMaxWidth())
+       }
+       Column(Modifier.weight(2f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
+        Text("31-BAND GEQ · READ-ONLY PREVIEW",color=gold,style=MaterialTheme.typography.labelSmall)
+        Row(Modifier.fillMaxWidth().weight(1f),horizontalArrangement=Arrangement.spacedBy(2.dp)) {
+         detector.centers.forEach { hz ->
+          Column(Modifier.weight(1f).fillMaxHeight(),horizontalAlignment=Alignment.CenterHorizontally) {
+           Text("0",color=muted,style=MaterialTheme.typography.labelSmall)
+           Box(Modifier.weight(1f).width(2.dp).background(Color.DarkGray))
+           Box(Modifier.fillMaxWidth().height(7.dp).background(Color.LightGray))
+           Text(if(hz>=1000) "${hz/1000}k" else hz.toInt().toString(),color=muted,style=MaterialTheme.typography.labelSmall,maxLines=1)
+          }
+         }
+        }
+       }
+      }
+      Column(Modifier.weight(1.35f).fillMaxHeight().background(panel,RoundedCornerShape(7.dp)).padding(8.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+       Text("AI FEEDBACK ADVISOR",color=gold,fontWeight=FontWeight.Bold)
+       Text("RMS ${"%.1f".format(captureHealth.rmsDbfs)} / PEAK ${"%.1f".format(captureHealth.peakDbfs)} dBFS",color=Color.White,style=MaterialTheme.typography.labelSmall)
+       LinearProgressIndicator(progress=((captureHealth.rmsDbfs+60.0)/60.0).coerceIn(0.0,1.0).toFloat(),modifier=Modifier.fillMaxWidth())
+       Text(if(liveSession.canUseForAdvice && candidate!=null) "DETECTED: ${candidate!!.hz} Hz" else "Waiting for verified audio frames",color=muted)
+       Text("Mode: ${aiMode.name}",color=gold)
+       val current=suggestionQueue.current()
+       Text(current?.let{"${it.hz} Hz  ${it.cutDb} dB  ${it.status}"} ?: "No pending suggestion",color=Color.White)
+       Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+        OutlinedButton(onClick={suggestionQueue.next();refreshQueue()},enabled=suggestionQueue.snapshot().isNotEmpty(),contentPadding=PaddingValues(horizontal=6.dp)) {Text("NEXT")}
+        OutlinedButton(onClick={current?.let{suggestionQueue.undo(it.id);refreshQueue()}},enabled=current!=null && aiMode==AiOperatingMode.ASSIST_CONFIRM,contentPadding=PaddingValues(horizontal=6.dp)) {Text("UNDO")}
+       }
+       Text("CONFIRM = PREVIEW ONLY · NO M32 EQ WRITES",color=muted,style=MaterialTheme.typography.labelSmall)
+       OutlinedButton(onClick={advancedView=true}) {Text("REVIEW / CONFIRM")}
+      }
+     }
+    }
+   } else {
    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement=Arrangement.spacedBy(14.dp)) {
+    OutlinedButton(onClick={advancedView=false}) { Text("BACK TO LANDSCAPE DASHBOARD") }
     Text("KAI SOUNDGOOD",fontWeight=FontWeight.Black,style=MaterialTheme.typography.headlineMedium,color=Color.White)
     Text("AI GEQ   /   MIDAS M32 SERIES",color=gold,fontWeight=FontWeight.Bold)
     Text("ASSIST MODE  •  MEDIUM  •  MAX CUT −3 dB",color=muted)
@@ -372,8 +432,9 @@ class MainActivity:ComponentActivity() {
     Button(onClick={ message="GEQ write intentionally disabled until FX-slot OSC mapping and readback are verified" },enabled=false) { Text("APPLY · LOCKED UNTIL VERIFIED") }
     Text("SAFETY: This build never sends GEQ writes. Detector is advisory, not a calibrated feedback suppressor.",color=muted,style=MaterialTheme.typography.bodySmall)
    }
+   }
    // Overlay is a sibling of the full-size EQ screen, never a layout column that shrinks it.
-   if(advisorVisible) {
+   if(advancedView && advisorVisible) {
     FloatingAiAdvisor(
      mode=aiMode,
      expanded=advisorExpanded,
@@ -390,7 +451,7 @@ class MainActivity:ComponentActivity() {
      onUndo={if(aiMode==AiOperatingMode.ASSIST_CONFIRM) suggestionQueue.undo(it);refreshQueue()},
      onNext={suggestionQueue.next();refreshQueue()}
     )
-   } else {
+   } else if(advancedView) {
     OutlinedButton(onClick={advisorVisible=true},modifier=Modifier.align(Alignment.TopEnd).padding(8.dp)) { Text("AI ADVISOR") }
    }
    }
