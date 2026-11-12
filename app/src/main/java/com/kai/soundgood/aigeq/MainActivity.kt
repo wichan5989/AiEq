@@ -203,7 +203,7 @@ class MainActivity:ComponentActivity() {
     Text("MIC / USB INPUT LEVEL · dBFS",color=gold)
     Text("RMS ${"%.1f".format(captureHealth.rmsDbfs)} dBFS · PEAK ${"%.1f".format(captureHealth.peakDbfs)} dBFS",color=Color.White)
     LinearProgressIndicator(
-     progress={((captureHealth.rmsDbfs+60f)/60f).coerceIn(0f,1f)},
+     progress={((captureHealth.rmsDbfs + 60.0) / 60.0).coerceIn(0.0, 1.0).toFloat()},
      modifier=Modifier.fillMaxWidth().height(12.dp),
      color=if(captureHealth.peakDbfs > -3f) Color(0xFFFF6B5E) else Color(0xFF37CFA4),
      trackColor=Color(0xFF30343B)
