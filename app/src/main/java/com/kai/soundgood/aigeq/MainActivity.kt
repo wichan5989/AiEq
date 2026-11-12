@@ -250,7 +250,7 @@ class MainActivity:ComponentActivity() {
     }
    } else {
    Column(Modifier.fillMaxSize().padding(8.dp)) {
-    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
      OutlinedButton(onClick={advancedView=false},contentPadding=PaddingValues(horizontal=10.dp)) {Text("‹ BACK")}
      listOf("APP","LAYERS","LAYOUTS","CHANNEL STRIP","MIDI","SAVE/LOAD").forEach { tab ->
       FilterChip(selected=settingsTab==tab || (tab=="APP" && settingsTab in listOf("GENERAL","MIXER","METERING","APP-LINK")),onClick={settingsTab=if(tab=="APP") "METERING" else tab},label={Text(tab,fontSize=11.sp)})
@@ -266,7 +266,7 @@ class MainActivity:ComponentActivity() {
       if(settingsTab=="METERING") {
        Text("APP SETUP  /  METERING",color=gold,fontWeight=FontWeight.Bold)
        Text("General",color=Color.White)
-       Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+       Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
         @Composable fun meterSwitch(title:String,value:Boolean,change:(Boolean)->Unit) {
          Column(Modifier.width(110.dp).background(panel,RoundedCornerShape(5.dp)).padding(6.dp),horizontalAlignment=Alignment.CenterHorizontally) {
           Text(title,color=muted,fontSize=11.sp,maxLines=2)
@@ -278,7 +278,7 @@ class MainActivity:ComponentActivity() {
         meterSwitch("Use Layers",meterbridgeLayers,{meterbridgeLayers=it})
         meterSwitch("GR level plot",grLevelPlot,{grLevelPlot=it})
        }
-       Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+       Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
         @Composable fun meterSelect(title:String,value:String,options:List<String>,change:(String)->Unit) {
          var expanded by remember { mutableStateOf(false) }
          Column(Modifier.width(150.dp).background(panel,RoundedCornerShape(5.dp)).padding(6.dp)) {
@@ -298,7 +298,7 @@ class MainActivity:ComponentActivity() {
        }
        HorizontalDivider(color=Color.DarkGray)
        Text("Tap points (mixer specific)",color=Color.White)
-       Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+       Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
         listOf("Input","Aux","FX Return","Mix","Group","Matrix","Main").forEach { title ->
          val value=if(title=="Input") meterTapInput else meterTapMix
          var expanded by remember { mutableStateOf(false) }
