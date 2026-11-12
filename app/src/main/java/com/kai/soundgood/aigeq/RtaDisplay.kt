@@ -132,6 +132,19 @@ private fun heat(db:Float, floor:Float):Color {
  }
 }
 
+/** 31 standard third-octave band centers; labels align with the 31 RTA columns. */
+@Composable fun RtaFrequencyAxis(modifier:Modifier=Modifier) {
+ val labels=mapOf(0 to "20",3 to "40",6 to "80",9 to "160",12 to "315",15 to "630",18 to "1.25k",21 to "2.5k",24 to "5k",27 to "10k",30 to "20k")
+ Column(modifier) {
+  Row(modifier=Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+   labels.forEach { (_,label) ->
+    Text(label,color=Color.LightGray,style=MaterialTheme.typography.labelSmall,maxLines=1)
+   }
+  }
+  Text("Frequency (Hz) · 31 bands, 20 Hz–20 kHz",color=Color.Gray,style=MaterialTheme.typography.labelSmall)
+ }
+}
+
 @Composable fun RtaControls(mode:RtaMode,onMode:(RtaMode)->Unit,floorDb:Float,onFloor:(Float)->Unit,style:RtaStyle,onStyle:(RtaStyle)->Unit) {
  Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
   Text("RTA DISPLAY",color=Color(0xFFD9AA59))
