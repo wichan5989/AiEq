@@ -113,6 +113,8 @@ class MainActivity:ComponentActivity() {
   val selectedDevice = devices.firstOrNull { it.id == chosenDeviceId }
 
   var rtaHistory by remember { mutableStateOf<List<List<Float>>>(emptyList()) }
+  var minInputDbfs by remember { mutableStateOf<Double?>(null) }
+  var maxInputDbfs by remember { mutableStateOf<Double?>(null) }
   var rtaMode by remember { mutableStateOf(RtaMode.BAR) }
   var rtaFloor by remember { mutableFloatStateOf(-90f) }
   var rtaStyle by remember { mutableStateOf(RtaStyle.PIXEL_LED) }
