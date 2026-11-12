@@ -218,12 +218,12 @@ class MainActivity:ComponentActivity() {
            Box(Modifier.weight(1f).width(2.dp).background(Color.DarkGray))
            Box(Modifier.fillMaxWidth().height(7.dp).background(Color.LightGray))
            val frequencyLabel = when {
-            hz == 31.5f -> "31.5"
-            hz < 1000f -> hz.toInt().toString()
-            hz == 1250f -> "1k25"
-            hz == 3150f -> "3k15"
-            hz == 6300f -> "6k3"
-            hz == 12500f -> "12k5"
+            hz == 31.5 -> "31.5"
+            hz < 1000.0 -> hz.toInt().toString()
+            hz == 1250.0 -> "1k25"
+            hz == 3150.0 -> "3k15"
+            hz == 6300.0 -> "6k3"
+            hz == 12500.0 -> "12k5"
             else -> "${(hz/1000f).toInt()}k"
            }
            Text(if(index%2==0) frequencyLabel else " ",color=muted,fontSize=8.sp,maxLines=1,softWrap=false)
