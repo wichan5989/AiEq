@@ -1,0 +1,20 @@
+import com.kai.soundgood.aigeq.*
+fun main() {
+ val history=EqPointHistory()
+ val k1=EqBandKey(EqTarget(TargetKind.CHANNEL,1),EqKind.PEQ,2)
+ val k2=EqBandKey(EqTarget(TargetKind.CHANNEL,1),EqKind.PEQ,3)
+ check(history.propose(1,k1,0.0,-2.0,"snap-a") is EqHistoryResult.Ok)
+ check(history.propose(2,k2,1.0,0.0,"snap-b") is EqHistoryResult.Ok)
+ check(history.propose(3,k1,0.0,-1.0,"snap-c") is EqHistoryResult.Error)
+ check(history.confirmPreview(1,"wrong",true) is EqHistoryResult.Error)
+ check(history.confirmPreview(1,"snap-a",false) is EqHistoryResult.Error)
+ check(history.confirmPreview(1,"snap-a",true) is EqHistoryResult.Ok)
+ check(history.simulateApply(1,0.5) is EqHistoryResult.Error)
+ check(history.simulateApply(1,0.0) is EqHistoryResult.Ok)
+ check(history.simulateUndo(1,-1.0) is EqHistoryResult.Error)
+ check(history.simulateUndo(1,-2.0) is EqHistoryResult.Ok)
+ check(history.get(2)?.status==EqHistoryStatus.PROPOSED)
+ check(!history.canWriteHardware())
+ check(history.propose(4,k1,0.0,-1.0,"snap-new") is EqHistoryResult.Ok)
+ println("PASS: 12 per-band history safety assertions")
+}
