@@ -42,6 +42,18 @@ class MainActivity:ComponentActivity() {
  @Composable private fun Screen() {
   val scope= rememberCoroutineScope()
   var advancedView by remember { mutableStateOf(false) }
+  var settingsTab by remember { mutableStateOf("METERING") }
+  var meterbridge by remember { mutableStateOf(false) }
+  var meterbridgeFaders by remember { mutableStateOf(true) }
+  var meterbridgeLayers by remember { mutableStateOf(true) }
+  var meterStyle by remember { mutableStateOf("Smooth") }
+  var meterCount by remember { mutableStateOf("Default") }
+  var peakHold by remember { mutableStateOf("Inf.") }
+  var meterDecay by remember { mutableStateOf("40 dB/sec") }
+  var grLevelPlot by remember { mutableStateOf(true) }
+  var meterTapInput by remember { mutableStateOf("Preamp") }
+  var meterTapMix by remember { mutableStateOf("Post Fader") }
+
   var connected by remember { mutableStateOf(false) }
   var detecting by remember { mutableStateOf(false) }
   var candidate by remember { mutableStateOf<Candidate?>(null) }
@@ -237,7 +249,76 @@ class MainActivity:ComponentActivity() {
      }
     }
    } else {
-   Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement=Arrangement.spacedBy(14.dp)) {
+   Column(Modifier.fillMaxSize().padding(8.dp)) {
+    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+     OutlinedButton(onClick={advancedView=false},contentPadding=PaddingValues(horizontal=10.dp)) {Text("‹ BACK")}
+     listOf("APP","LAYERS","LAYOUTS","CHANNEL STRIP","MIDI","SAVE/LOAD").forEach { tab ->
+      FilterChip(selected=settingsTab==tab || (tab=="APP" && settingsTab in listOf("GENERAL","MIXER","METERING","APP-LINK")),onClick={settingsTab=if(tab=="APP") "METERING" else tab},label={Text(tab,fontSize=11.sp)})
+     }
+    }
+    Row(Modifier.fillMaxWidth().weight(1f),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+     Column(Modifier.width(116.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+      listOf("GENERAL","MIXER","METERING","APP-LINK").forEach { item ->
+       FilterChip(selected=settingsTab==item,onClick={settingsTab=item},label={Text(item,fontSize=12.sp)},modifier=Modifier.fillMaxWidth())
+      }
+     }
+     Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(6.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+      if(settingsTab=="METERING") {
+       Text("APP SETUP  /  METERING",color=gold,fontWeight=FontWeight.Bold)
+       Text("General",color=Color.White)
+       Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+        @Composable fun meterSwitch(title:String,value:Boolean,change:(Boolean)->Unit) {
+         Column(Modifier.width(110.dp).background(panel,RoundedCornerShape(5.dp)).padding(6.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+          Text(title,color=muted,fontSize=11.sp,maxLines=2)
+          Switch(checked=value,onCheckedChange=change)
+         }
+        }
+        meterSwitch("Meterbridge",meterbridge,{meterbridge=it})
+        meterSwitch("Meterbridge Faders",meterbridgeFaders,{meterbridgeFaders=it})
+        meterSwitch("Use Layers",meterbridgeLayers,{meterbridgeLayers=it})
+        meterSwitch("GR level plot",grLevelPlot,{grLevelPlot=it})
+       }
+       Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+        @Composable fun meterSelect(title:String,value:String,options:List<String>,change:(String)->Unit) {
+         var expanded by remember { mutableStateOf(false) }
+         Column(Modifier.width(150.dp).background(panel,RoundedCornerShape(5.dp)).padding(6.dp)) {
+          Text(title,color=muted,fontSize=11.sp)
+          Box {
+           OutlinedButton(onClick={expanded=true}) {Text(value,fontSize=11.sp)}
+           DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
+            options.forEach { option -> DropdownMenuItem(text={Text(option)},onClick={change(option);expanded=false}) }
+           }
+          }
+         }
+        }
+        meterSelect("Meter style",meterStyle,listOf("Smooth","Pixel LED"),{meterStyle=it;rtaStyle=if(it=="Smooth") RtaStyle.SMOOTH else RtaStyle.PIXEL_LED})
+        meterSelect("Meter Count",meterCount,listOf("Default","8","16","32"),{meterCount=it})
+        meterSelect("Peak Hold",peakHold,listOf("Off","1 sec","3 sec","Inf."),{peakHold=it})
+        meterSelect("Decay",meterDecay,listOf("20 dB/sec","40 dB/sec","60 dB/sec"),{meterDecay=it})
+       }
+       HorizontalDivider(color=Color.DarkGray)
+       Text("Tap points (mixer specific)",color=Color.White)
+       Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+        listOf("Input","Aux","FX Return","Mix","Group","Matrix","Main").forEach { title ->
+         val value=if(title=="Input") meterTapInput else meterTapMix
+         var expanded by remember { mutableStateOf(false) }
+         Column(Modifier.width(120.dp).background(panel,RoundedCornerShape(5.dp)).padding(6.dp)) {
+          Text(title,color=muted,fontSize=11.sp)
+          Box {
+           OutlinedButton(onClick={expanded=true}) {Text(value,fontSize=11.sp)}
+           DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
+            listOf("Preamp","Pre Fader","Post Fader").forEach { option ->
+             DropdownMenuItem(text={Text(option)},onClick={if(title=="Input") meterTapInput=option else meterTapMix=option;expanded=false})
+            }
+           }
+          }
+         }
+        }
+       }
+       Text("Metering options are local UI previews. Tap points do not change M32 routing; no EQ writes.",color=gold,fontSize=12.sp)
+       Text("Live Android microphone: RMS ${"%.1f".format(captureHealth.rmsDbfs)} / Peak ${"%.1f".format(captureHealth.peakDbfs)} dBFS",color=Color.White)
+      } else if(settingsTab=="MIXER" || settingsTab=="GENERAL") {
+
     OutlinedButton(onClick={advancedView=false}) { Text("BACK TO LANDSCAPE DASHBOARD") }
     Text("KAI SOUNDGOOD",fontWeight=FontWeight.Black,style=MaterialTheme.typography.headlineMedium,color=Color.White)
     Text("AI GEQ   /   MIDAS M32 SERIES",color=gold,fontWeight=FontWeight.Bold)
@@ -442,6 +523,12 @@ class MainActivity:ComponentActivity() {
     @Suppress("UNUSED_VARIABLE") val queueUiRevision = queueRevision
     Button(onClick={ message="GEQ write intentionally disabled until FX-slot OSC mapping and readback are verified" },enabled=false) { Text("APPLY · LOCKED UNTIL VERIFIED") }
     Text("SAFETY: This build never sends GEQ writes. Detector is advisory, not a calibrated feedback suppressor.",color=muted,style=MaterialTheme.typography.bodySmall)
+      } else {
+       Text("$settingsTab · settings preview",color=gold,fontWeight=FontWeight.Bold)
+       Text("No live mixer configuration writes are supported in this section.",color=muted)
+      }
+     }
+    }
    }
    }
    // Overlay is a sibling of the full-size EQ screen, never a layout column that shrinks it.
