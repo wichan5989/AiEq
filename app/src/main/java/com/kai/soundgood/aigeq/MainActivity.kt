@@ -233,7 +233,10 @@ class MainActivity:ComponentActivity() {
         }
        }
       }
-      Column(Modifier.weight(1.35f).fillMaxHeight().background(panel,RoundedCornerShape(7.dp)).padding(8.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+      Column(Modifier.weight(1.35f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+       ClassicDbMeter(captureHealth.rmsDbfs,captureHealth.peakDbfs,minInputDbfs,maxInputDbfs,
+        onReset={minInputDbfs=null;maxInputDbfs=null},modifier=Modifier.fillMaxWidth().weight(1f))
+       Column(Modifier.fillMaxWidth().weight(1f).background(panel,RoundedCornerShape(7.dp)).padding(5.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(3.dp)) {
        Text("AI FEEDBACK ADVISOR",color=gold,fontWeight=FontWeight.Bold)
        Text("RMS ${"%.1f".format(captureHealth.rmsDbfs)} / PEAK ${"%.1f".format(captureHealth.peakDbfs)} dBFS",color=Color.White,style=MaterialTheme.typography.labelSmall)
        LinearProgressIndicator(progress=((captureHealth.rmsDbfs+60.0)/60.0).coerceIn(0.0,1.0).toFloat(),modifier=Modifier.fillMaxWidth())
@@ -246,7 +249,8 @@ class MainActivity:ComponentActivity() {
         OutlinedButton(onClick={current?.let{suggestionQueue.undo(it.id);refreshQueue()}},enabled=current!=null && aiMode==AiOperatingMode.ASSIST_CONFIRM,contentPadding=PaddingValues(horizontal=6.dp)) {Text("UNDO")}
        }
        Text("CONFIRM = PREVIEW ONLY · NO M32 EQ WRITES",color=muted,style=MaterialTheme.typography.labelSmall)
-       OutlinedButton(onClick={advancedView=true}) {Text("REVIEW / CONFIRM")}
+       OutlinedButton(onClick={advancedView=true},contentPadding=PaddingValues(horizontal=6.dp,vertical=2.dp)) {Text("REVIEW / CONFIRM",fontSize=11.sp)}
+       }
       }
      }
     }
