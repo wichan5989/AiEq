@@ -333,7 +333,7 @@ class MainActivity:ComponentActivity() {
       if(c!=null && cut!=null) {
        // A candidate can be queued once per target/frequency; a new detection needs a new token.
        val id=(target.label+":"+c.hz.toString()).hashCode().toLong()
-       if(suggestionQueue.add(FeedbackSuggestion(id,target.label,c.hz,cut))) refreshQueue()
+       if(suggestionQueue.add(FeedbackSuggestion(id,target.label,c.hz.toFloat(),cut))) refreshQueue()
       }
      }) { Text("ADD DETECTED POINT") }
      val queued = suggestionQueue.snapshot()
