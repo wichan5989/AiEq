@@ -200,7 +200,16 @@ class MainActivity:ComponentActivity() {
     ))
     Text("AI input freshness: ${if(liveSession.canUseForAdvice) "FRESH" else "NOT READY"} · complete FFT frames ${liveSession.completeFrames} · last frame age ${liveSession.lastFrameAgeMs ?: "n/a"} ms",color=gold)
     Text("Capture health: ${captureHealth.blocks} blocks · ${captureHealth.shortReads} short reads · ${captureHealth.errors} errors",color=muted)
-    Text("Level: RMS ${"%.1f".format(captureHealth.rmsDbfs)} dBFS · Peak ${"%.1f".format(captureHealth.peakDbfs)} dBFS · Silent ${captureHealth.silentBlocks} · Clipped ${captureHealth.clippedBlocks}",color=muted)
+    Text("MIC / USB INPUT LEVEL · dBFS",color=gold)
+    Text("RMS ${"%.1f".format(captureHealth.rmsDbfs)} dBFS · PEAK ${"%.1f".format(captureHealth.peakDbfs)} dBFS",color=Color.White)
+    LinearProgressIndicator(
+     progress={((captureHealth.rmsDbfs+60f)/60f).coerceIn(0f,1f)},
+     modifier=Modifier.fillMaxWidth().height(12.dp),
+     color=if(captureHealth.peakDbfs > -3f) Color(0xFFFF6B5E) else Color(0xFF37CFA4),
+     trackColor=Color(0xFF30343B)
+    )
+    Text("−60                         −30                         0 dBFS",color=muted,style=MaterialTheme.typography.labelSmall)
+    Text("Silent ${captureHealth.silentBlocks} · Clipped ${captureHealth.clippedBlocks} · Not calibrated dB SPL",color=muted,style=MaterialTheme.typography.bodySmall)
     if(inputWarning.isNotEmpty()) Text(inputWarning,color=gold)
     Text("Audio frames: $captureFrames · Capture: ${if(detecting) "ON" else "OFF"} · OSC: ${if(connected) "REPLIED" else "OFFLINE"}",color=Color.White)
     Text("Analysis: ${if(readiness.canAnalyze) "ANDROID MIC ONLY" else "NOT READY"} · EQ Write: LOCKED",color=gold)
@@ -241,6 +250,7 @@ class MainActivity:ComponentActivity() {
     Text("SOURCE ROUTING IS UI-ONLY: M32 OSC does not supply verified PCM spectrum. Live graph below uses the selected Android input (microphone or USB), NOT selected mixer channel/bus. For a mic connected to M32, route its signal to a supported USB audio input on Android or implement a verified RTA transport.",color=muted,style=MaterialTheme.typography.bodySmall)
     RtaControls(rtaMode,{rtaMode=it},rtaFloor,{rtaFloor=it},rtaStyle,{rtaStyle=it})
     RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxWidth().height(210.dp))
+     RtaFrequencyAxis(Modifier.fillMaxWidth())
     Text("EQ ROUTING · TARGET",color=gold,fontWeight=FontWeight.Bold)
     Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
      TargetKind.entries.forEach { kind ->
