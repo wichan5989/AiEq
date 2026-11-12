@@ -96,6 +96,11 @@ class MainActivity:ComponentActivity() {
 
   var message by remember { mutableStateOf("Offline · GEQ write locked") }
   var peqSnapshot by remember { mutableStateOf<M32PeqSnapshot?>(null) }
+  var livePeqBand by remember { mutableIntStateOf(1) }
+  var livePeqGain by remember { mutableFloatStateOf(-1f) }
+  var livePeqArmed by remember { mutableStateOf(false) }
+  var livePeqBusy by remember { mutableStateOf(false) }
+
   val client= remember { OscClient() }
   val detector= remember { FeedbackDetector() }
   val rtaAnalyzer= remember { RtaAnalyzer() }
@@ -440,6 +445,34 @@ class MainActivity:ComponentActivity() {
      Text(if(snapshot.complete) "PEQ query responses complete; capability remains unverified" else "Incomplete snapshot — no control changes allowed",color=gold)
     }
 
+    HorizontalDivider(color=Color.DarkGray)
+    Text("MANUAL PEQ GAIN WRITE · LIVE M32",color=gold,fontWeight=FontWeight.Bold)
+    Text("Only one PEQ band at a time · cut 0 to −3 dB · baseline read + readback required",color=muted)
+    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+     OutlinedButton(onClick={livePeqBand=(livePeqBand-1).coerceAtLeast(1);livePeqArmed=false},enabled=livePeqBand>1) {Text("−")}
+     Text("BAND $livePeqBand / ${target.peqBands}",color=Color.White)
+     OutlinedButton(onClick={livePeqBand=(livePeqBand+1).coerceAtMost(target.peqBands);livePeqArmed=false},enabled=livePeqBand<target.peqBands) {Text("+")}
+     Text("GAIN ${"%.1f".format(livePeqGain)} dB",color=gold)
+    }
+    Slider(value=livePeqGain,onValueChange={livePeqGain=it;livePeqArmed=false},valueRange=-3f..0f,steps=5)
+    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+     Checkbox(checked=livePeqArmed,onCheckedChange={livePeqArmed=it},enabled=connected&&!livePeqBusy)
+     Text("I confirm live PEQ change on ${target.label}",color=Color.White)
+     Button(enabled=connected&&livePeqArmed&&!livePeqBusy,onClick={
+      livePeqBusy=true;livePeqArmed=false
+      val requestedTarget=target
+      val requestedBand=livePeqBand
+      val requestedGain=livePeqGain
+      scope.launch(Dispatchers.IO) {
+       try {
+        val ok=M32ManualPeqWriter(client).writeGainAndVerify(requestedTarget,requestedBand,requestedGain)
+        message=if(ok) "PEQ WRITE VERIFIED: ${requestedTarget.label} band $requestedBand gain $requestedGain dB" else "PEQ WRITE NOT VERIFIED: inspect mixer immediately"
+       } catch(e:Exception) { message="PEQ write aborted: ${e.message}" }
+       finally {livePeqBusy=false}
+      }
+     }) {Text(if(livePeqBusy) "WRITING" else "WRITE PEQ GAIN")}
+    }
+    Text(message,color=gold)
     Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
      EqKind.entries.forEach { kind ->
       FilterChip(selected=eqChoice==kind,onClick={eqChoice=kind; resetApproval()},label={Text(kind.name)},enabled=kind==EqKind.OFF || allowedEq(target,caps,kind))
