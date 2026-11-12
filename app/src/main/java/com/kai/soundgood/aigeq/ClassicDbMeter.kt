@@ -22,12 +22,12 @@ import kotlin.math.PI
 fun ClassicDbMeter(rmsDbfs: Double, peakDbfs: Double, minDbfs: Double?, maxDbfs: Double?, onReset: () -> Unit, modifier: Modifier = Modifier) {
  val gold = Color(0xFFD9AA59)
  val fg = Color(0xFFE6E0D3)
- Column(modifier.background(Color(0xFF20242A), RoundedCornerShape(8.dp)).padding(8.dp), verticalArrangement=Arrangement.spacedBy(4.dp)) {
+ Column(modifier.background(Color(0xFF20242A), RoundedCornerShape(8.dp)).padding(5.dp), verticalArrangement=Arrangement.spacedBy(2.dp)) {
   Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
    Text("CLASSIC VU  /  INPUT",color=gold,fontSize=12.sp,fontWeight=FontWeight.Bold)
    Text("dBFS",color=fg,fontSize=11.sp)
   }
-  Canvas(Modifier.fillMaxWidth().height(90.dp)) {
+  Canvas(Modifier.fillMaxWidth().height(52.dp)) {
    val center=Offset(size.width/2f,size.height*0.93f)
    val radius=minOf(size.width*0.40f,size.height*0.82f)
    val start=205.0
@@ -44,12 +44,11 @@ fun ClassicDbMeter(rmsDbfs: Double, peakDbfs: Double, minDbfs: Double?, maxDbfs:
    drawLine(Color(0xFFF5F0E8),center,tip,strokeWidth=3f)
    drawCircle(gold,5f,center)
   }
-  Text("RMS ${"%.1f".format(rmsDbfs)}   PEAK ${"%.1f".format(peakDbfs)}",color=fg,fontSize=13.sp,fontWeight=FontWeight.Bold)
+  Text("RMS ${"%.1f".format(rmsDbfs)}   PEAK ${"%.1f".format(peakDbfs)}",color=fg,fontSize=11.sp,fontWeight=FontWeight.Bold)
   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-   Text("MIN ${minDbfs?.let { "%.1f".format(it) } ?: "--"}",color=Color(0xFF68D8B1),fontSize=12.sp)
+   Text("MIN ${minDbfs?.let { "%.1f".format(it) } ?: "--"}",color=Color(0xFF68D8B1),fontSize=10.sp)
    Text("MAX ${maxDbfs?.let { "%.1f".format(it) } ?: "--"}",color=Color(0xFFE6A66A),fontSize=12.sp)
-   OutlinedButton(onClick=onReset,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp),modifier=Modifier.height(30.dp)) {Text("RESET",fontSize=10.sp)}
+   OutlinedButton(onClick=onReset,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp),modifier=Modifier.height(26.dp)) {Text("RESET",fontSize=10.sp)}
   }
-  Text("RMS MIN/MAX since reset · -60 to 0 dBFS",color=Color(0xFF9CA3AF),fontSize=10.sp)
  }
 }
