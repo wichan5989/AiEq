@@ -156,6 +156,11 @@ class MainActivity:ComponentActivity() {
       if(n>0) {
        recovery.read(android.os.SystemClock.elapsedRealtime(),n)
        captureHealth=healthMonitor.accept(data,n,data.size,now)
+       if(captureHealth.rmsDbfs.isFinite()) {
+        val level=captureHealth.rmsDbfs
+        minInputDbfs=minInputDbfs?.let { minOf(it,level) } ?: level
+        maxInputDbfs=maxInputDbfs?.let { maxOf(it,level) } ?: level
+       }
       } else if(n<0) captureHealth=healthMonitor.accept(data,n,data.size,now)
       val selectedPresent=chosenDeviceId==null || AudioInputManager.available(this@MainActivity).any { it.id==chosenDeviceId }
       recoveryStatus=recovery.check(android.os.SystemClock.elapsedRealtime(),AudioInputManager.routedId(recorder),selectedPresent)
@@ -235,8 +240,8 @@ class MainActivity:ComponentActivity() {
       }
       Column(Modifier.weight(1.35f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
        ClassicDbMeter(captureHealth.rmsDbfs,captureHealth.peakDbfs,minInputDbfs,maxInputDbfs,
-        onReset={minInputDbfs=null;maxInputDbfs=null},modifier=Modifier.fillMaxWidth().weight(1f))
-       Column(Modifier.fillMaxWidth().weight(1f).background(panel,RoundedCornerShape(7.dp)).padding(5.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(3.dp)) {
+        onReset={minInputDbfs=null;maxInputDbfs=null},modifier=Modifier.fillMaxWidth().weight(1.1f))
+       Column(Modifier.fillMaxWidth().weight(0.9f).background(panel,RoundedCornerShape(7.dp)).padding(5.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(3.dp)) {
        Text("AI FEEDBACK ADVISOR",color=gold,fontWeight=FontWeight.Bold)
        Text("RMS ${"%.1f".format(captureHealth.rmsDbfs)} / PEAK ${"%.1f".format(captureHealth.peakDbfs)} dBFS",color=Color.White,style=MaterialTheme.typography.labelSmall)
        LinearProgressIndicator(progress=((captureHealth.rmsDbfs+60.0)/60.0).coerceIn(0.0,1.0).toFloat(),modifier=Modifier.fillMaxWidth())
