@@ -25,8 +25,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -244,8 +242,7 @@ class MainActivity:ComponentActivity() {
            else -> "${(hz/1000.0).toInt()}k"
           }
           Box(Modifier.weight(1f).height(37.dp),contentAlignment=Alignment.TopCenter) {
-           Text(frequencyLabel,color=Color(0xFFD0D4D8),fontSize=8.sp,maxLines=1,softWrap=false,
-            modifier=Modifier.graphicsLayer { rotationZ=-65f; transformOrigin=TransformOrigin(0.5f,0.5f) })
+           Text(frequencyLabel,color=Color(0xFFD0D4D8),fontSize=7.sp,maxLines=1,softWrap=false)
           }
          }
         }
