@@ -8,6 +8,9 @@ import android.media.AudioManager
 import android.content.Context
 import android.media.MediaRecorder
 import android.os.Bundle
+import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import androidx.compose.ui.unit.sp
 import android.content.pm.ActivityInfo
 import androidx.compose.ui.platform.LocalConfiguration
@@ -121,6 +124,10 @@ class MainActivity:ComponentActivity() {
   var routingVerified by remember { mutableStateOf(false) }
   val selectedDevice = devices.firstOrNull { it.id == chosenDeviceId }
   var useMixerUsbInput by remember { mutableStateOf(false) }
+  var useNetworkInput by remember { mutableStateOf(false) }
+  var networkRunning by remember { mutableStateOf(false) }
+  var bridgeHost by remember { mutableStateOf("192.168.0.101") }
+  var bridgeStatus by remember { mutableStateOf("NOT CONNECTED") }
   val usbInputs = devices.filter { it.usb }
   val actualInputName = devices.firstOrNull { it.id == actualDeviceId }?.name ?: "unknown"
 
@@ -205,6 +212,39 @@ class MainActivity:ComponentActivity() {
     finally { recovery.stop(); sessionGuard.end(); liveSession=sessionGuard.status(android.os.SystemClock.elapsedRealtime()); candidate=null; resetApproval(); try { recorder.stop() } catch (_:Exception) {}; recorder.release(); actualDeviceId=null; routingVerified=false }
    }
   }
+  LaunchedEffect(networkRunning) {
+   if(!networkRunning) return@LaunchedEffect
+   withContext(Dispatchers.IO) {
+    try {
+     Socket().use { socket ->
+      socket.connect(java.net.InetSocketAddress(bridgeHost,18777),3000)
+      socket.soTimeout=2500
+      bridgeStatus="NETWORK AUDIO ACTIVE · ${socket.inetAddress.hostAddress}"
+      val input=socket.getInputStream()
+      val pcm=ByteArray(2048)
+      val samples=ShortArray(1024)
+      val assembler=PcmFrameAssembler(4096)
+      while(networkRunning) {
+       var received=0
+       while(received<pcm.size) {
+        val n=input.read(pcm,received,pcm.size-received)
+        if(n<0) throw java.io.EOFException("Bridge disconnected")
+        received+=n
+       }
+       ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(samples)
+       captureHealth=AudioCaptureDiagnostics().apply { accept(samples,samples.size,samples.size,System.currentTimeMillis()) }.snapshot()
+       assembler.append(samples,samples.size) { frame ->
+        val levels=rtaAnalyzer.measure(frame)
+        rtaLevels=levels;captureFrames++
+        rtaHistory=(rtaHistory+listOf(levels)).takeLast(90)
+       }
+      }
+     }
+    } catch(e:Exception) {
+     bridgeStatus="NETWORK ERROR: ${e.message}"
+    } finally {networkRunning=false}
+   }
+  }
   MaterialTheme(colorScheme=darkColorScheme(primary=gold,background=bg,surface=panel,onBackground=Color.White,onSurface=Color.White)) {
    Box(Modifier.fillMaxSize().background(bg)) {
    if(!advancedView) {
@@ -255,14 +295,14 @@ class MainActivity:ComponentActivity() {
         var inputMenuOpen by remember { mutableStateOf(false) }
         Box {
          OutlinedButton(onClick={if(!detecting) {devices=AudioInputManager.available(this@MainActivity);inputMenuOpen=true}},enabled=!detecting,contentPadding=PaddingValues(horizontal=8.dp),modifier=Modifier.height(38.dp)) {
-          Text(if(useMixerUsbInput) "RTA: MIXER USB ▾" else "RTA: PHONE MIC ▾",fontSize=11.sp,color=gold)
+          Text(if(useNetworkInput) "RTA: M32 NETWORK ▾" else if(useMixerUsbInput) "RTA: MIXER USB ▾" else "RTA: PHONE MIC ▾",fontSize=11.sp,color=gold)
          }
          DropdownMenu(expanded=inputMenuOpen,onDismissRequest={inputMenuOpen=false}) {
           DropdownMenuItem(text={Text("PHONE MIC · Android default")},onClick={
-           useMixerUsbInput=false;chosenDeviceId=null;actualDeviceId=null;routingVerified=false;resetApproval();inputMenuOpen=false
+           useNetworkInput=false;useMixerUsbInput=false;chosenDeviceId=null;actualDeviceId=null;routingVerified=false;resetApproval();inputMenuOpen=false
           })
           HorizontalDivider()
-          DropdownMenuItem(text={Text("M32 NETWORK (PC) · bridge required")},enabled=false,onClick={})
+          DropdownMenuItem(text={Text("M32 NETWORK (PC) · EVO4 bridge")},onClick={useNetworkInput=true;useMixerUsbInput=false;chosenDeviceId=null;inputMenuOpen=false})
           DropdownMenuItem(text={Text("M32 DIRECT (NO PC) · audio transport required")},enabled=false,onClick={})
           HorizontalDivider()
           if(usbInputs.isEmpty()) {
@@ -270,16 +310,23 @@ class MainActivity:ComponentActivity() {
           } else {
            usbInputs.forEach { device ->
             DropdownMenuItem(text={Text("MIXER USB · ${device.name} (#${device.id})")},onClick={
-             useMixerUsbInput=true;chosenDeviceId=device.id;actualDeviceId=null;routingVerified=false;resetApproval();inputMenuOpen=false
+             useNetworkInput=false;useMixerUsbInput=true;chosenDeviceId=device.id;actualDeviceId=null;routingVerified=false;resetApproval();inputMenuOpen=false
             })
            }
           }
          }
         }
-        Text(if(detecting) {
+        Text(if(useNetworkInput) bridgeStatus else if(detecting) {
          if(routingVerified) "ACTIVE: ${if(useMixerUsbInput) "USB" else "PHONE"} · $actualInputName" else "INPUT ROUTE UNVERIFIED"
         } else if(useMixerUsbInput) "USB SELECTED · NOT CAPTURING" else "PHONE SELECTED · NOT CAPTURING",color=if(detecting && routingVerified) Color(0xFF58D69C) else muted,fontSize=9.sp,maxLines=1)
-        Button(onClick={if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=!detecting else permission.launch(Manifest.permission.RECORD_AUDIO)},contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(detecting) "STOP RTA" else "START RTA")}
+        if(useNetworkInput) {
+         OutlinedTextField(value=bridgeHost,onValueChange={bridgeHost=it},singleLine=true,label={Text("PC IP",fontSize=10.sp)},modifier=Modifier.width(145.dp).height(54.dp))
+        }
+        Button(onClick={
+         if(useNetworkInput) {networkRunning=!networkRunning;bridgeStatus=if(networkRunning) "CONNECTING" else "STOPPED"}
+         else if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=!detecting
+         else permission.launch(Manifest.permission.RECORD_AUDIO)
+        },contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(if(useNetworkInput) networkRunning else detecting) "STOP RTA" else "START RTA")}
        }
        Column(Modifier.weight(1f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
