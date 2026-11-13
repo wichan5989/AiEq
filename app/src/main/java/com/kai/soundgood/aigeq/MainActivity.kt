@@ -207,10 +207,27 @@ class MainActivity:ComponentActivity() {
      Row(Modifier.fillMaxWidth().weight(1f),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
       Column(Modifier.weight(4f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(5.dp)) {
        Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-        Text(target.label,color=gold,fontWeight=FontWeight.Bold)
-        OutlinedButton(onClick={if(targetNumber>1){targetNumber--;resetApproval()}},contentPadding=PaddingValues(horizontal=8.dp)) {Text("−")}
-        OutlinedButton(onClick={if(targetNumber<maxTarget){targetNumber++;resetApproval()}},contentPadding=PaddingValues(horizontal=8.dp)) {Text("+")}
-        Text("INPUT: ${selectedDevice?.name ?: "Android default"}",color=muted,style=MaterialTheme.typography.labelSmall)
+        var targetMenuOpen by remember { mutableStateOf(false) }
+        Box {
+         OutlinedButton(onClick={targetMenuOpen=true},contentPadding=PaddingValues(horizontal=9.dp,vertical=0.dp),modifier=Modifier.height(38.dp)) {
+          Text(target.label+" ▾",color=gold,fontSize=12.sp)
+         }
+         DropdownMenu(expanded=targetMenuOpen,onDismissRequest={targetMenuOpen=false}) {
+          TargetKind.entries.forEach { kind ->
+           val count=when(kind) { TargetKind.CHANNEL->32; TargetKind.BUS->16; TargetKind.MAIN_LR->1; TargetKind.MATRIX->6 }
+           val title=when(kind) { TargetKind.CHANNEL->"CH";TargetKind.BUS->"BUS";TargetKind.MAIN_LR->"LR";TargetKind.MATRIX->"MTX" }
+           DropdownMenuItem(text={Text("$title 01–$count")},onClick={
+            targetKind=kind;targetNumber=1;eqChoice=EqKind.OFF;resetApproval();targetMenuOpen=false
+           })
+          }
+         }
+        }
+        OutlinedButton(onClick={if(targetNumber>1){targetNumber--;resetApproval()}},enabled=targetNumber>1,contentPadding=PaddingValues(horizontal=7.dp),modifier=Modifier.height(38.dp)) {Text("−")}
+        OutlinedButton(onClick={if(targetNumber<maxTarget){targetNumber++;resetApproval()}},enabled=targetNumber<maxTarget,contentPadding=PaddingValues(horizontal=7.dp),modifier=Modifier.height(38.dp)) {Text("+")}
+        Text("EQ",color=muted,fontSize=11.sp)
+        listOf(EqKind.OFF,EqKind.GEQ,EqKind.PEQ).forEach { kind ->
+         FilterChip(selected=eqChoice==kind,onClick={eqChoice=kind;resetApproval()},label={Text(kind.name,fontSize=10.sp)},modifier=Modifier.height(34.dp))
+        }
         Spacer(Modifier.weight(1f))
         Button(onClick={if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=!detecting else permission.launch(Manifest.permission.RECORD_AUDIO)},contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(detecting) "STOP RTA" else "START RTA")}
        }
