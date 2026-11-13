@@ -222,6 +222,17 @@ class MainActivity:ComponentActivity() {
           }
          }
         }
+        var numberMenuOpen by remember { mutableStateOf(false) }
+        Box {
+         OutlinedButton(onClick={numberMenuOpen=true},contentPadding=PaddingValues(horizontal=7.dp),modifier=Modifier.height(38.dp)) {
+          Text(if(targetKind==TargetKind.MAIN_LR) "LR" else "%02d ▾".format(targetNumber),color=gold,fontSize=11.sp)
+         }
+         DropdownMenu(expanded=numberMenuOpen,onDismissRequest={numberMenuOpen=false},modifier=Modifier.heightIn(max=320.dp)) {
+          (1..maxTarget).forEach { number ->
+           DropdownMenuItem(text={Text("%02d".format(number))},onClick={targetNumber=number;resetApproval();numberMenuOpen=false})
+          }
+         }
+        }
         OutlinedButton(onClick={if(targetNumber>1){targetNumber--;resetApproval()}},enabled=targetNumber>1,contentPadding=PaddingValues(horizontal=7.dp),modifier=Modifier.height(38.dp)) {Text("−")}
         OutlinedButton(onClick={if(targetNumber<maxTarget){targetNumber++;resetApproval()}},enabled=targetNumber<maxTarget,contentPadding=PaddingValues(horizontal=7.dp),modifier=Modifier.height(38.dp)) {Text("+")}
         Text("EQ",color=muted,fontSize=11.sp)
