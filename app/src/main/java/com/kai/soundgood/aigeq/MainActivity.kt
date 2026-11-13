@@ -26,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -224,9 +225,9 @@ class MainActivity:ComponentActivity() {
          RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxSize())
          Row(Modifier.fillMaxSize().padding(top=6.dp,bottom=4.dp),horizontalArrangement=Arrangement.spacedBy(1.dp)) {
           detector.centers.forEachIndexed { index,hz ->
-           Column(Modifier.weight(1f).fillMaxHeight(),horizontalAlignment=Alignment.CenterHorizontally) {
-            Spacer(Modifier.weight(1f))
-            Box(Modifier.width(2.dp).fillMaxHeight(0.04f).background(Color(0xFFBFC5CC)))
+           Box(Modifier.weight(1f).fillMaxHeight(),contentAlignment=Alignment.Center) {
+            Box(Modifier.width(1.dp).fillMaxHeight(0.86f).background(Color(0x665D6875)))
+            Box(Modifier.fillMaxWidth(0.88f).height(7.dp).background(Color(0xFFC1C8D0),RoundedCornerShape(2.dp)))
            }
           }
          }
