@@ -248,11 +248,12 @@ class MainActivity:ComponentActivity() {
        }
        Column(Modifier.weight(1f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-         Text("LIVE RTA + 31-BAND GEQ · SHARED FREQUENCY VIEW",color=gold,style=MaterialTheme.typography.labelSmall)
-         Text("GEQ PREVIEW · NO FX WRITES",color=muted,fontSize=9.sp)
+         Text(when(eqChoice) { EqKind.GEQ -> "LIVE RTA + 31-BAND GEQ · PREVIEW"; EqKind.PEQ -> "LIVE RTA + PEQ · ${target.peqBands} BANDS"; EqKind.OFF -> "LIVE RTA · EQ OVERLAY OFF" },color=gold,style=MaterialTheme.typography.labelSmall)
+         Text(when(eqChoice) { EqKind.GEQ -> "GEQ ZERO-LINE · NO FX WRITES"; EqKind.PEQ -> "PEQ DATA NOT LOADED"; EqKind.OFF -> "RTA ONLY" },color=muted,fontSize=9.sp)
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
          RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxSize())
+         if(eqChoice==EqKind.GEQ) {
          Row(Modifier.fillMaxSize().padding(top=6.dp,bottom=4.dp),horizontalArrangement=Arrangement.spacedBy(1.dp)) {
           detector.centers.forEachIndexed { index,hz ->
            Box(Modifier.weight(1f).fillMaxHeight(),contentAlignment=Alignment.Center) {
@@ -260,6 +261,7 @@ class MainActivity:ComponentActivity() {
             Box(Modifier.fillMaxWidth(0.88f).height(7.dp).background(Color(0xFFC1C8D0),RoundedCornerShape(2.dp)))
            }
           }
+         }
          }
         }
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(1.dp)) {
