@@ -261,6 +261,10 @@ class MainActivity:ComponentActivity() {
           DropdownMenuItem(text={Text("PHONE MIC · Android default")},onClick={
            useMixerUsbInput=false;chosenDeviceId=null;actualDeviceId=null;routingVerified=false;resetApproval();inputMenuOpen=false
           })
+          HorizontalDivider()
+          DropdownMenuItem(text={Text("M32 NETWORK (PC) · bridge required")},enabled=false,onClick={})
+          DropdownMenuItem(text={Text("M32 DIRECT (NO PC) · audio transport required")},enabled=false,onClick={})
+          HorizontalDivider()
           if(usbInputs.isEmpty()) {
            DropdownMenuItem(text={Text("MIXER USB · no USB input detected")},enabled=false,onClick={})
           } else {
