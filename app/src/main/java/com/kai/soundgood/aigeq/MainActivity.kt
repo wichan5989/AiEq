@@ -284,7 +284,30 @@ class MainActivity:ComponentActivity() {
        Column(Modifier.weight(1f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
          Text(when(eqChoice) { EqKind.GEQ -> "LIVE RTA + 31-BAND GEQ · PREVIEW"; EqKind.PEQ -> "LIVE RTA + PEQ · ${target.peqBands} BANDS"; EqKind.OFF -> "LIVE RTA · EQ OVERLAY OFF" },color=gold,style=MaterialTheme.typography.labelSmall)
-         Text(when(eqChoice) { EqKind.GEQ -> "GEQ ZERO-LINE · NO FX WRITES"; EqKind.PEQ -> "PEQ DATA NOT LOADED"; EqKind.OFF -> "RTA ONLY" },color=muted,fontSize=9.sp)
+         var quickMeterOpen by remember { mutableStateOf(false) }
+         Box {
+          OutlinedButton(onClick={quickMeterOpen=true},modifier=Modifier.height(28.dp),contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp)) {Text("RTA SETTINGS",fontSize=10.sp)}
+          DropdownMenu(expanded=quickMeterOpen,onDismissRequest={quickMeterOpen=false},modifier=Modifier.width(290.dp).heightIn(max=410.dp)) {
+           Text("METERING",color=gold,fontWeight=FontWeight.Bold,modifier=Modifier.padding(10.dp))
+           listOf("Meterbridge","Meterbridge Faders","Use Layers","GR level plot").forEach { name ->
+            val active=when(name) { "Meterbridge"->meterbridge;"Meterbridge Faders"->meterbridgeFaders;"Use Layers"->meterbridgeLayers;else->grLevelPlot }
+            DropdownMenuItem(text={Text(name,fontSize=12.sp)},trailingIcon={Text(if(active) "ON" else "OFF",color=if(active) gold else muted)},onClick={
+             when(name) {"Meterbridge"->meterbridge=!meterbridge;"Meterbridge Faders"->meterbridgeFaders=!meterbridgeFaders;"Use Layers"->meterbridgeLayers=!meterbridgeLayers;else->grLevelPlot=!grLevelPlot}
+            })
+           }
+           listOf("Smooth","Pixel LED").forEach { style ->
+            DropdownMenuItem(text={Text("Style: $style",fontSize=12.sp)},trailingIcon={if(meterStyle==style) Text("✓",color=gold)},onClick={meterStyle=style;rtaStyle=if(style=="Smooth") RtaStyle.SMOOTH else RtaStyle.PIXEL_LED})
+           }
+           listOf("Off","1 sec","3 sec","Inf.").forEach { choice ->
+            DropdownMenuItem(text={Text("Peak Hold: $choice",fontSize=12.sp)},trailingIcon={if(peakHold==choice) Text("✓",color=gold)},onClick={peakHold=choice})
+           }
+           listOf("20 dB/sec","40 dB/sec","60 dB/sec").forEach { choice ->
+            DropdownMenuItem(text={Text("Decay: $choice",fontSize=12.sp)},trailingIcon={if(meterDecay==choice) Text("✓",color=gold)},onClick={meterDecay=choice})
+           }
+           DropdownMenuItem(text={Text("Meter Count / Tap Points / More…",fontSize=12.sp,color=gold)},onClick={quickMeterOpen=false;settingsTab="METERING";advancedView=true})
+           Text("Only meter style currently changes RTA rendering. Other options are UI preferences until meter processing and M32 tap-point support are implemented.",color=muted,fontSize=10.sp,modifier=Modifier.padding(10.dp))
+          }
+         }
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
          RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxSize())
