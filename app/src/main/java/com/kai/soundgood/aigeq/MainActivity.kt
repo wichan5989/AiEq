@@ -25,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -214,30 +215,36 @@ class MainActivity:ComponentActivity() {
         Spacer(Modifier.weight(1f))
         Button(onClick={if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=!detecting else permission.launch(Manifest.permission.RECORD_AUDIO)},contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(detecting) "STOP RTA" else "START RTA")}
        }
-       Column(Modifier.weight(3f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
-        Text("LIVE RTA · ANDROID MIC / USB AUDIO",color=gold,style=MaterialTheme.typography.labelSmall)
-        RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxWidth().weight(1f))
-        RtaFrequencyAxis(Modifier.fillMaxWidth())
-       }
-       Column(Modifier.weight(2f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
-        Text("31-BAND GEQ · READ-ONLY PREVIEW",color=gold,style=MaterialTheme.typography.labelSmall)
-        Row(Modifier.fillMaxWidth().weight(1f),horizontalArrangement=Arrangement.spacedBy(2.dp)) {
-         detector.centers.forEachIndexed { index,hz ->
-          Column(Modifier.weight(1f).fillMaxHeight(),horizontalAlignment=Alignment.CenterHorizontally) {
-           Text("0",color=muted,fontSize=9.sp,maxLines=1)
-           Box(Modifier.weight(1f).width(2.dp).background(Color.DarkGray))
-           Box(Modifier.fillMaxWidth().height(7.dp).background(Color.LightGray))
-           val frequencyLabel = when {
-            hz == 31.5 -> "31.5"
-            hz < 1000.0 -> hz.toInt().toString()
-            hz == 1250.0 -> "1k25"
-            hz == 3150.0 -> "3k15"
-            hz == 6300.0 -> "6k3"
-            hz == 12500.0 -> "12k5"
-            else -> "${(hz/1000f).toInt()}k"
+       Column(Modifier.weight(1f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+         Text("LIVE RTA + 31-BAND GEQ · SHARED FREQUENCY VIEW",color=gold,style=MaterialTheme.typography.labelSmall)
+         Text("GEQ PREVIEW · NO FX WRITES",color=muted,fontSize=9.sp)
+        }
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+         RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxSize())
+         Row(Modifier.fillMaxSize().padding(top=6.dp,bottom=4.dp),horizontalArrangement=Arrangement.spacedBy(1.dp)) {
+          detector.centers.forEachIndexed { index,hz ->
+           Column(Modifier.weight(1f).fillMaxHeight(),horizontalAlignment=Alignment.CenterHorizontally) {
+            Spacer(Modifier.weight(1f))
+            Box(Modifier.width(2.dp).fillMaxHeight(0.04f).background(Color(0xFFBFC5CC)))
            }
-           Text(if(index%2==0) frequencyLabel else " ",color=muted,fontSize=8.sp,maxLines=1,softWrap=false)
-           Text(if(index%2!=0) frequencyLabel else " ",color=muted,fontSize=8.sp,maxLines=1,softWrap=false)
+          }
+         }
+        }
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(1.dp)) {
+         detector.centers.forEach { hz ->
+          val frequencyLabel=when {
+           hz==31.5 -> "31.5"
+           hz<1000.0 -> hz.toInt().toString()
+           hz==1250.0 -> "1k25"
+           hz==3150.0 -> "3k15"
+           hz==6300.0 -> "6k3"
+           hz==12500.0 -> "12k5"
+           else -> "${(hz/1000.0).toInt()}k"
+          }
+          Box(Modifier.weight(1f).height(37.dp),contentAlignment=Alignment.TopCenter) {
+           Text(frequencyLabel,color=Color(0xFFD0D4D8),fontSize=8.sp,maxLines=1,softWrap=false,
+            modifier=Modifier.graphicsLayer { rotationZ=-65f; transformOrigin=TransformOrigin(0.5f,0.5f) })
           }
          }
         }
