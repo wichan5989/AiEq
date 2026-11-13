@@ -120,6 +120,10 @@ class MainActivity:ComponentActivity() {
   var actualDeviceId by remember { mutableStateOf<Int?>(null) }
   var routingVerified by remember { mutableStateOf(false) }
   val selectedDevice = devices.firstOrNull { it.id == chosenDeviceId }
+  var useMixerUsbInput by remember { mutableStateOf(false) }
+  val usbInputs = devices.filter { it.usb }
+  val actualInputName = devices.firstOrNull { it.id == actualDeviceId }?.name ?: "unknown"
+
 
   var rtaHistory by remember { mutableStateOf<List<List<Float>>>(emptyList()) }
   var minInputDbfs by remember { mutableStateOf<Double?>(null) }
@@ -143,6 +147,10 @@ class MainActivity:ComponentActivity() {
     val recovery=CaptureRecoveryPolicy()
     recovery.start(android.os.SystemClock.elapsedRealtime(),chosenDeviceId)
     try {
+     if(useMixerUsbInput && (chosenDeviceId==null || AudioInputManager.available(this@MainActivity).none { it.id==chosenDeviceId && it.usb })) {
+      inputWarning="MIXER USB unavailable: connect and select a USB audio interface"
+      detecting=false;return@withContext
+     }
      if(chosenDeviceId != null && !AudioInputManager.route(recorder,this@MainActivity,chosenDeviceId!!)) {
       message="Selected input missing; capture cancelled"; detecting=false; return@withContext
      }
@@ -155,7 +163,7 @@ class MainActivity:ComponentActivity() {
       detecting=false; return@withContext
      }
      actualDeviceId=AudioInputManager.routedId(recorder)
-     routingVerified=chosenDeviceId == null || actualDeviceId==chosenDeviceId
+     routingVerified=if(useMixerUsbInput) chosenDeviceId!=null && actualDeviceId==chosenDeviceId else chosenDeviceId==null || actualDeviceId==chosenDeviceId
      sessionGuard.routeVerified(routingVerified)
      if(!routingVerified) { message="Audio routed to unexpected device; analysis stopped"; detecting=false; return@withContext }
      val data=ShortArray(4096)
@@ -244,6 +252,29 @@ class MainActivity:ComponentActivity() {
          FilterChip(selected=eqChoice==kind,onClick={eqChoice=kind;resetApproval()},label={Text(kind.name,fontSize=10.sp)},modifier=Modifier.height(34.dp))
         }
         Spacer(Modifier.weight(1f))
+        var inputMenuOpen by remember { mutableStateOf(false) }
+        Box {
+         OutlinedButton(onClick={if(!detecting) {devices=AudioInputManager.available(this@MainActivity);inputMenuOpen=true}},enabled=!detecting,contentPadding=PaddingValues(horizontal=8.dp),modifier=Modifier.height(38.dp)) {
+          Text(if(useMixerUsbInput) "RTA: MIXER USB ▾" else "RTA: PHONE MIC ▾",fontSize=11.sp,color=gold)
+         }
+         DropdownMenu(expanded=inputMenuOpen,onDismissRequest={inputMenuOpen=false}) {
+          DropdownMenuItem(text={Text("PHONE MIC · Android default")},onClick={
+           useMixerUsbInput=false;chosenDeviceId=null;actualDeviceId=null;routingVerified=false;resetApproval();inputMenuOpen=false
+          })
+          if(usbInputs.isEmpty()) {
+           DropdownMenuItem(text={Text("MIXER USB · no USB input detected")},enabled=false,onClick={})
+          } else {
+           usbInputs.forEach { device ->
+            DropdownMenuItem(text={Text("MIXER USB · ${device.name} (#${device.id})")},onClick={
+             useMixerUsbInput=true;chosenDeviceId=device.id;actualDeviceId=null;routingVerified=false;resetApproval();inputMenuOpen=false
+            })
+           }
+          }
+         }
+        }
+        Text(if(detecting) {
+         if(routingVerified) "ACTIVE: ${if(useMixerUsbInput) "USB" else "PHONE"} · $actualInputName" else "INPUT ROUTE UNVERIFIED"
+        } else if(useMixerUsbInput) "USB SELECTED · NOT CAPTURING" else "PHONE SELECTED · NOT CAPTURING",color=if(detecting && routingVerified) Color(0xFF58D69C) else muted,fontSize=9.sp,maxLines=1)
         Button(onClick={if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=!detecting else permission.launch(Manifest.permission.RECORD_AUDIO)},contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(detecting) "STOP RTA" else "START RTA")}
        }
        Column(Modifier.weight(1f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
