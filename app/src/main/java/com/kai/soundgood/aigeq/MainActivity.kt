@@ -219,7 +219,7 @@ class MainActivity:ComponentActivity() {
      Socket().use { socket ->
       socket.connect(java.net.InetSocketAddress(bridgeHost,18777),3000)
       socket.soTimeout=2500
-      bridgeStatus="NETWORK AUDIO ACTIVE · ${socket.inetAddress.hostAddress}"
+      bridgeStatus="CONNECTED · WAITING FOR PCM"
       val input=socket.getInputStream()
       val pcm=ByteArray(2048)
       val samples=ShortArray(1024)
@@ -232,6 +232,7 @@ class MainActivity:ComponentActivity() {
         received+=n
        }
        ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(samples)
+       bridgeStatus="NETWORK AUDIO ACTIVE · PCM 48k"
        captureHealth=AudioCaptureDiagnostics().apply { accept(samples,samples.size,samples.size,System.currentTimeMillis()) }.snapshot()
        assembler.append(samples,samples.size) { frame ->
         val levels=rtaAnalyzer.measure(frame)
@@ -294,7 +295,7 @@ class MainActivity:ComponentActivity() {
         Spacer(Modifier.weight(1f))
         var inputMenuOpen by remember { mutableStateOf(false) }
         Box {
-         OutlinedButton(onClick={if(!detecting) {devices=AudioInputManager.available(this@MainActivity);inputMenuOpen=true}},enabled=!detecting,contentPadding=PaddingValues(horizontal=8.dp),modifier=Modifier.height(38.dp)) {
+         OutlinedButton(onClick={if(!detecting && !networkRunning) {devices=AudioInputManager.available(this@MainActivity);inputMenuOpen=true}},enabled=!detecting && !networkRunning,contentPadding=PaddingValues(horizontal=8.dp),modifier=Modifier.height(38.dp)) {
           Text(if(useNetworkInput) "RTA: M32 NETWORK ▾" else if(useMixerUsbInput) "RTA: MIXER USB ▾" else "RTA: PHONE MIC ▾",fontSize=11.sp,color=gold)
          }
          DropdownMenu(expanded=inputMenuOpen,onDismissRequest={inputMenuOpen=false}) {
