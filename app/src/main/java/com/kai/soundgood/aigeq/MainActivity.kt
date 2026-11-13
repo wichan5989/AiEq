@@ -13,6 +13,7 @@ import android.content.pm.ActivityInfo
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
@@ -42,6 +43,9 @@ class MainActivity:ComponentActivity() {
  @Composable private fun Screen() {
   val scope= rememberCoroutineScope()
   var advancedView by remember { mutableStateOf(false) }
+  BackHandler(enabled=advancedView) {
+   advancedView=false
+  }
   var settingsTab by remember { mutableStateOf("METERING") }
   var meterbridge by remember { mutableStateOf(false) }
   var meterbridgeFaders by remember { mutableStateOf(true) }
