@@ -47,7 +47,34 @@ private fun heat(db:Float, floor:Float):Color {
  return androidx.compose.ui.graphics.lerp(stops[index],stops[index+1],scaled-index)
 }
 
-@Composable fun RtaDisplay(levels:List<Float>, history:List<List<Float>>, mode:RtaMode, floorDb:Float, style:RtaStyle, modifier:Modifier=Modifier) {
+@Composable fun RtaDisplay(levels:List<Float>, history:List<List<Float>>, mode:RtaMode, floorDb:Float, style:RtaStyle, modifier:Modifier=Modifier, peakHoldSetting:String="Off", decaySetting:String="40 dB/sec") {
+ val decayRate=decaySetting.substringBefore(" ").toFloatOrNull() ?: 40f
+ var displayLevels by remember { mutableStateOf(List(31) { -120f }) }
+ var peakLevels by remember { mutableStateOf(List(31) { -120f }) }
+ var peakTimes by remember { mutableStateOf(List(31) { 0L }) }
+ var lastUpdate by remember { mutableLongStateOf(0L) }
+ LaunchedEffect(levels,peakHoldSetting,decaySetting) {
+  val now=android.os.SystemClock.elapsedRealtime()
+  val dt=if(lastUpdate==0L) 0f else ((now-lastUpdate).coerceIn(0L,1000L))/1000f
+  lastUpdate=now
+  val next=List(31) { i ->
+   val input=levels.getOrElse(i) { -120f }
+   if(dt==0f) input else max(input,displayLevels[i]-decayRate*dt)
+  }
+  displayLevels=next
+  val holdMs=when(peakHoldSetting) {"1 sec"->1000L;"3 sec"->3000L;"Inf."->Long.MAX_VALUE;else->0L}
+  val updatedTimes=peakTimes.toMutableList()
+  val updatedPeaks=peakLevels.toMutableList()
+  for(i in 0 until 31) {
+   val current=next[i]
+   if(current>=updatedPeaks[i] || now-updatedTimes[i]>=holdMs) {
+    updatedPeaks[i]=current
+    updatedTimes[i]=now
+   }
+  }
+  peakLevels=updatedPeaks
+  peakTimes=updatedTimes
+ }
  Canvas(modifier.background(Color(0xFF151B21),RoundedCornerShape(8.dp))) {
   val count=31; val dx=size.width/count; val height=size.height
   for(i in 0..4) {
@@ -69,9 +96,15 @@ private fun heat(db:Float, floor:Float):Color {
     }
    }
   }
+  if(peakHoldSetting!="Off" && mode!=RtaMode.SPECTROGRAM) {
+   for(i in 0 until min(count,peakLevels.size)) {
+    val yy=y(peakLevels[i])
+    drawLine(Color(0xFFFFC46A),Offset(i*dx+dx*.24f,yy),Offset(i*dx+dx*.76f,yy),2f)
+   }
+  }
   when(mode) {
-   RtaMode.BAR -> for(i in 0 until min(count,levels.size)) {
-    if(led) drawLedColumn(i,levels[i]) else {
+   RtaMode.BAR -> for(i in 0 until min(count,displayLevels.size)) {
+    if(led) drawLedColumn(i,displayLevels[i]) else {
      val yy=y(levels[i]); val barHeight=(height-yy).coerceAtLeast(0f)
      val steps=48
      for(j in 0 until steps) {
@@ -84,7 +117,7 @@ private fun heat(db:Float, floor:Float):Color {
     }
    }
    RtaMode.LINE, RtaMode.AREA -> {
-    val points=levels.take(count).mapIndexed { i,v -> Offset((i+.5f)*dx,y(v)) }
+    val points=displayLevels.take(count).mapIndexed { i,v -> Offset((i+.5f)*dx,y(v)) }
     if(mode==RtaMode.AREA) {
      if(led) for(i in 0 until min(count,levels.size)) drawLedColumn(i,levels[i],.7f)
      else for(i in points.indices) {
