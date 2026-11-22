@@ -358,7 +358,7 @@ class MainActivity:ComponentActivity() {
          }
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
-         RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxSize())
+         RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxSize(,peakHold,meterDecay))
          if(eqChoice==EqKind.GEQ) {
          Row(Modifier.fillMaxSize().padding(top=6.dp,bottom=4.dp),horizontalArrangement=Arrangement.spacedBy(1.dp)) {
           detector.centers.forEachIndexed { index,hz ->
@@ -562,7 +562,7 @@ class MainActivity:ComponentActivity() {
     Text("RTA SOURCE: ${activeRtaSource.label}  |  EQ TARGET: ${target.label}",color=gold)
     Text("SOURCE ROUTING IS UI-ONLY: M32 OSC does not supply verified PCM spectrum. Live graph below uses the selected Android input (microphone or USB), NOT selected mixer channel/bus. For a mic connected to M32, route its signal to a supported USB audio input on Android or implement a verified RTA transport.",color=muted,style=MaterialTheme.typography.bodySmall)
     RtaControls(rtaMode,{rtaMode=it},rtaFloor,{rtaFloor=it},rtaStyle,{rtaStyle=it})
-    RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxWidth().height(210.dp))
+    RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxWidth(,peakHold,meterDecay).height(210.dp))
      RtaFrequencyAxis(Modifier.fillMaxWidth())
     Text("EQ ROUTING · TARGET",color=gold,fontWeight=FontWeight.Bold)
     Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
