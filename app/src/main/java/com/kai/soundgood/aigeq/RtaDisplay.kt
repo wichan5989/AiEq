@@ -96,16 +96,10 @@ private fun heat(db:Float, floor:Float):Color {
     }
    }
   }
-  if(peakHoldSetting!="Off" && mode!=RtaMode.SPECTROGRAM) {
-   for(i in 0 until min(count,peakLevels.size)) {
-    val yy=y(peakLevels[i])
-    drawLine(Color(0xFFFFC46A),Offset(i*dx+dx*.24f,yy),Offset(i*dx+dx*.76f,yy),2f)
-   }
-  }
   when(mode) {
    RtaMode.BAR -> for(i in 0 until min(count,displayLevels.size)) {
     if(led) drawLedColumn(i,displayLevels[i]) else {
-     val yy=y(levels[i]); val barHeight=(height-yy).coerceAtLeast(0f)
+     val yy=y(displayLevels[i]); val barHeight=(height-yy).coerceAtLeast(0f)
      val steps=48
      for(j in 0 until steps) {
       val top=yy+barHeight*j/steps
@@ -119,7 +113,7 @@ private fun heat(db:Float, floor:Float):Color {
    RtaMode.LINE, RtaMode.AREA -> {
     val points=displayLevels.take(count).mapIndexed { i,v -> Offset((i+.5f)*dx,y(v)) }
     if(mode==RtaMode.AREA) {
-     if(led) for(i in 0 until min(count,levels.size)) drawLedColumn(i,levels[i],.7f)
+     if(led) for(i in 0 until min(count,levels.size)) drawLedColumn(i,displayLevels[i],.7f)
      else for(i in points.indices) {
       val p=points[i]; val steps=48
       for(j in 0 until steps) {
@@ -136,7 +130,7 @@ private fun heat(db:Float, floor:Float):Color {
      for(i in points.indices) {
       val p=points[i]
       val snapped=(p.y/cellHeight).toInt().coerceIn(0,ledRows-1)*cellHeight
-      drawRect(heat(levels[i],floorDb),Offset(p.x-dx*.28f,snapped+1.5f),
+      drawRect(heat(displayLevels[i],floorDb),Offset(p.x-dx*.28f,snapped+1.5f),
        androidx.compose.ui.geometry.Size(dx*.56f,(cellHeight-3f).coerceAtLeast(1f)))
      }
     } else for(i in 1 until points.size) {
@@ -162,6 +156,13 @@ private fun heat(db:Float, floor:Float):Color {
     }
    }
   }
+  if(peakHoldSetting!="Off" && mode!=RtaMode.SPECTROGRAM) {
+   for(i in 0 until min(count,peakLevels.size)) {
+    val yy=y(peakLevels[i])
+    drawLine(Color(0xFFFFC46A),Offset(i*dx+dx*.24f,yy),Offset(i*dx+dx*.76f,yy),2f)
+   }
+  }
+
  }
 }
 
