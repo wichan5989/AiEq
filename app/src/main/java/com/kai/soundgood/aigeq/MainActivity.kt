@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -109,6 +110,25 @@ class MainActivity:ComponentActivity() {
   var livePeqBusy by remember { mutableStateOf(false) }
 
   val client= remember { OscClient() }
+  var bridgeLevels by remember { mutableStateOf<List<Float>?>(null) }
+  val bridgeBus=targetKind==TargetKind.BUS
+  LaunchedEffect(meterbridge,connected,bridgeBus) {
+   bridgeLevels=null
+   if(meterbridge && connected) withContext(Dispatchers.IO) {
+    try {
+     M32MeterReader().use { reader ->
+      var nextRenew=0L
+      while(kotlinx.coroutines.currentCoroutineContext().isActive) {
+       val now=android.os.SystemClock.elapsedRealtime()
+       if(now>=nextRenew){reader.subscribe(bridgeBus);nextRenew=now+5000L}
+       val frame=reader.read(bridgeBus)
+       withContext(Dispatchers.Main) { bridgeLevels=frame }
+      }
+     }
+    } finally { withContext(kotlinx.coroutines.NonCancellable+Dispatchers.Main) { bridgeLevels=null } }
+   }
+  }
+
   val detector= remember { FeedbackDetector() }
   val rtaAnalyzer= remember { RtaAnalyzer() }
   var rtaLevels by remember { mutableStateOf(List(31) {-120f}) }
@@ -328,6 +348,25 @@ class MainActivity:ComponentActivity() {
          else if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=!detecting
          else permission.launch(Manifest.permission.RECORD_AUDIO)
         },contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(if(useNetworkInput) networkRunning else detecting) "STOP RTA" else "START RTA")}
+       }
+       if(meterbridge) {
+        Column(Modifier.fillMaxWidth().background(panel,RoundedCornerShape(5.dp)).padding(4.dp)) {
+         Text(if(bridgeLevels==null) "M32 METERBRIDGE · NO VALID DATA" else "M32 METERBRIDGE · "+if(bridgeBus) "BUS" else "CH",color=gold,fontSize=10.sp)
+         val count=(meterCount.toIntOrNull() ?: if(bridgeBus) 16 else 32).coerceAtMost(if(bridgeBus) 16 else 32)
+         val offset=if(meterbridgeLayers) (((targetNumber-1)/count)*count).coerceAtMost((if(bridgeBus) 16 else 32)-count) else 0
+         Row(Modifier.fillMaxWidth().height(42.dp),horizontalArrangement=Arrangement.spacedBy(2.dp)) {
+          (0 until count).forEach { index ->
+           val channel=offset+index
+           val db=bridgeLevels?.getOrNull(channel)
+           Column(Modifier.weight(1f).fillMaxHeight().clickable {targetKind=if(bridgeBus) TargetKind.BUS else TargetKind.CHANNEL;targetNumber=channel+1;resetApproval()},horizontalAlignment=Alignment.CenterHorizontally) {
+            Box(Modifier.weight(1f).width(8.dp).background(Color(0xFF101216)),contentAlignment=Alignment.BottomCenter) {
+             if(db!=null) Box(Modifier.fillMaxWidth().fillMaxHeight(((db+60f)/60f).coerceIn(0f,1f)).background(if(db>=0f) Color.Red else if(db>=-12f) Color.Yellow else Color(0xFF58D69C)))
+            }
+            Text((channel+1).toString(),color=if(targetNumber==channel+1) gold else muted,fontSize=9.sp)
+           }
+          }
+         }
+        }
        }
        Column(Modifier.weight(1f).fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp)) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
