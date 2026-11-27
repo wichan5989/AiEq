@@ -145,6 +145,26 @@ class MainActivity:ComponentActivity() {
   LaunchedEffect(targetKind,targetNumber,detecting,feedbackThreshold,feedbackFixed) {
    caught=emptyList();candidate=null;notchSelected=false;detector.reset()
   }
+  var autoBankStatus by remember { mutableStateOf("OFF") }
+  var lastAutoInsert by remember(targetKind,targetNumber) { mutableStateOf(0L) }
+  LaunchedEffect(candidate,autoNotchPreview,feedbackFixed,targetKind,targetNumber,detecting,feedbackMaxCut) {
+   val hit=candidate
+   if(!autoNotchPreview || !detecting) {autoBankStatus="OFF";return@LaunchedEffect}
+   if(hit==null) {autoBankStatus="LISTENING";return@LaunchedEffect}
+   if(notchSelected) {autoBankStatus="EDIT PAUSED";return@LaunchedEffect}
+   val hz=hit.hz.toFloat()
+   if(!hz.isFinite() || hz !in 80f..12000f) return@LaunchedEffect
+   if(savedNotches.any { kotlin.math.abs(kotlin.math.ln(hz/it.first)) < 0.06f }) {autoBankStatus="DUPLICATE HELD";return@LaunchedEffect}
+   val now=android.os.SystemClock.elapsedRealtime()
+   if(now-lastAutoInsert<1500L) return@LaunchedEffect
+   val used=savedNotches.sumOf { minOf(it.second,feedbackMaxCut).toDouble() }
+   val cut=minOf(1f,feedbackMaxCut,(6.0-used).toFloat())
+   if(cut<0.5f || savedNotches.size>=4) {autoBankStatus="LIMIT REACHED";return@LaunchedEffect}
+   notchUndo=savedNotches
+   savedNotches=savedNotches+Triple(hz,cut,8f)
+   lastAutoInsert=now
+   autoBankStatus=if(feedbackFixed) "FIXED PREVIEW ADDED" else "LIVE PREVIEW ADDED"
+  }
   val rtaAnalyzer= remember { RtaAnalyzer() }
   var rtaLevels by remember { mutableStateOf(List(31) {-120f}) }
   var captureFrames by remember { mutableIntStateOf(0) }
@@ -482,6 +502,7 @@ class MainActivity:ComponentActivity() {
        Row(verticalAlignment=Alignment.CenterVertically) {
         Switch(checked=autoNotchPreview,onCheckedChange={autoNotchPreview=it})
         Text("AUTO NOTCH PREVIEW",color=gold,fontSize=10.sp)
+        Text(autoBankStatus,color=muted,fontSize=9.sp)
        }
        caught.forEach { hit ->
         OutlinedButton(onClick={notchHz=hit.hz.toFloat().coerceIn(80f,12000f);notchGain=1f;editNotch=-1;notchSelected=true},contentPadding=PaddingValues(horizontal=5.dp)) {Text("SELECT ${hit.hz.toInt()} Hz",fontSize=10.sp)}
