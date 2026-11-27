@@ -91,7 +91,7 @@ private val muted=Color(0xFF9CA3AF)
   }.toList()
  }
 
-  var safetyStatus by remember(key) { mutableStateOf("NO BASELINE · EQ LOCKED") }
+  var safetyStatus by remember(key,connected,stored,reserved) { mutableStateOf("NO BASELINE · EQ LOCKED") }
   var safetyBusy by remember { mutableStateOf(false) }
        Text("OSC EQ SAFETY · READ ONLY",color=gold,fontSize=10.sp)
        Text(safetyStatus,color=muted,fontSize=10.sp)
@@ -152,6 +152,42 @@ private val muted=Color(0xFF9CA3AF)
          restorePreview.forEach { Text(it,color=muted,fontSize=9.sp) }
         }
        }
+       ManualDynamicPreview(target,reserved,connected && !safetyBusy && safetyStatus=="BASELINE MATCH · EQ LOCKED")
        Text("Local persistent backup. PLAN is preview only. No restore or OSC EQ write.",color=muted,fontSize=9.sp)
 
+}
+
+@Composable private fun ManualDynamicPreview(target:EqTarget,plan:Set<Int>,ready:Boolean) {
+ var band by remember(target,plan,ready){mutableIntStateOf(plan.minOrNull() ?: 0)}
+ var trigger by remember(target,plan,ready){mutableStateOf(false)}
+ var maxCut by remember {mutableFloatStateOf(1f)}
+ var attack by remember {mutableIntStateOf(150)}
+ var hold by remember {mutableIntStateOf(800)}
+ var release by remember {mutableIntStateOf(1500)}
+ var cut by remember(target,plan,ready,band){mutableFloatStateOf(0f)}
+ val active by rememberUpdatedState(trigger)
+ LaunchedEffect(target,plan,ready,band,maxCut,attack,hold,release) {
+  cut=0f
+  if(!ready || band !in plan) return@LaunchedEffect
+  val envelope=ManualDynamicEnvelope()
+  var previous=android.os.SystemClock.elapsedRealtime()
+  while(isActive) {
+   val now=android.os.SystemClock.elapsedRealtime()
+   cut=envelope.step(now,now-previous,active,maxCut,attack,hold,release)
+   previous=now
+   delay(40)
+  }
+ }
+ Text("MANUAL DYNAMIC · LOCAL TEST ONLY",color=gold,fontSize=10.sp)
+ Text(if(ready && band in plan) "B$band · relative cut ${"%.2f".format(cut)} dB" else "Select PLAN and verify baseline first",color=muted,fontSize=10.sp)
+ Row(verticalAlignment=Alignment.CenterVertically) {
+  TextButton(enabled=ready&&plan.isNotEmpty(),onClick={trigger=false;band=plan.sorted().let {it[(it.indexOf(band)+1)%it.size]}}){Text("B$band",fontSize=10.sp)}
+  TextButton(enabled=ready&&band in plan,onClick={trigger=!trigger}){Text(if(trigger) "RELEASE" else "TRIGGER",fontSize=10.sp)}
+  TextButton(onClick={maxCut=if(maxCut>=3f) 1f else maxCut+1f}){Text("MAX $maxCut dB",fontSize=10.sp)}
+ }
+ Row(verticalAlignment=Alignment.CenterVertically) {
+  TextButton(onClick={attack=if(attack==150) 50 else 150}){Text("ATT $attack",fontSize=10.sp)}
+  TextButton(onClick={hold=if(hold==800) 300 else 800}){Text("HOLD $hold",fontSize=10.sp)}
+  TextButton(onClick={release=if(release==1500) 500 else 1500}){Text("REL $release",fontSize=10.sp)}
+ }
 }
