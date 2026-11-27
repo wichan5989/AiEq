@@ -297,8 +297,15 @@ class MainActivity:ComponentActivity() {
        val now=android.os.SystemClock.elapsedRealtime()
        if(now>=renew){probe.subscribe();renew=now+3000}
        val reply=probe.read()
-       if(reply!=null){last=now;withContext(Dispatchers.Main){spectrumStatus=reply}}
-       else if(now-last>2000) withContext(Dispatchers.Main){spectrumStatus="WAITING FOR SPECTRUM PACKETS"}
+       if(reply!=null){last=now;withContext(Dispatchers.Main){
+        val levels=detector.centers.map { hz ->
+         val index=(kotlin.math.ln(hz/20.0)/kotlin.math.ln(2.0)*10.0).toInt().coerceIn(0,99)
+         (maxOf(0,index-1)..minOf(99,index+1)).maxOf { reply[it] }
+        }
+        rtaLevels=levels;rtaHistory=(rtaHistory+listOf(levels)).takeLast(90);captureFrames++
+        spectrumStatus="ACTIVE · 100 BINS · MIXER SOURCE UNVERIFIED"
+       }}
+       else if(now-last>2000) withContext(Dispatchers.Main){spectrumStatus="WAITING FOR SPECTRUM PACKETS";rtaLevels=List(31){-120f};rtaHistory=emptyList()}
       }
      }
     } catch(e:kotlinx.coroutines.CancellationException){throw e}
@@ -402,7 +409,7 @@ class MainActivity:ComponentActivity() {
           })
           HorizontalDivider()
           DropdownMenuItem(text={Text("M32 NETWORK (PC) · EVO4 bridge")},onClick={switchRtaSource(true,false,null);inputMenuOpen=false})
-          DropdownMenuItem(text={Text("M32 OSC · Spectrum diagnostic (no PC)")},onClick={switchRtaSource(false,false,null,true);inputMenuOpen=false})
+          DropdownMenuItem(text={Text("M32 OSC · Direct RTA (no PC)")},onClick={switchRtaSource(false,false,null,true);inputMenuOpen=false})
           HorizontalDivider()
           if(usbInputs.isEmpty()) {
            DropdownMenuItem(text={Text("MIXER USB · no USB input detected")},enabled=false,onClick={})
@@ -423,7 +430,7 @@ class MainActivity:ComponentActivity() {
         }
 
        }
-       if(useOscSpectrum) Text("OSC RTA TEST · $spectrumStatus",color=gold,fontSize=10.sp)
+       if(useOscSpectrum) Text("OSC RTA · $spectrumStatus",color=gold,fontSize=10.sp)
        if(meterbridge && showGraphSettings) {
         Column(Modifier.fillMaxWidth().background(panel,RoundedCornerShape(5.dp)).padding(4.dp)) {
          Text(if(bridgeLevels==null) "M32 METERBRIDGE · NO VALID DATA" else "M32 METERBRIDGE · "+if(bridgeBus) "BUS" else "CH",color=gold,fontSize=10.sp)
