@@ -182,15 +182,19 @@ class MainActivity:ComponentActivity() {
   var useMixerUsbInput by remember { mutableStateOf(false) }
   var useNetworkInput by remember { mutableStateOf(false) }
   var networkRunning by remember { mutableStateOf(false) }
+  var useOscSpectrum by remember { mutableStateOf(false) }
+  var oscSpectrumRunning by remember { mutableStateOf(false) }
+  var spectrumStatus by remember { mutableStateOf("STOPPED") }
   var bridgeHost by remember { mutableStateOf("192.168.0.101") }
   var bridgeStatus by remember { mutableStateOf("NOT CONNECTED") }
-  fun switchRtaSource(network:Boolean, usb:Boolean, device:Int?) {
-   val running=detecting || networkRunning
-   detecting=false;networkRunning=false
+  fun switchRtaSource(network:Boolean, usb:Boolean, device:Int?, osc:Boolean=false) {
+   val running=detecting || networkRunning || oscSpectrumRunning
+   detecting=false;networkRunning=false;oscSpectrumRunning=false;useOscSpectrum=osc
    useNetworkInput=network;useMixerUsbInput=usb;chosenDeviceId=device
    actualDeviceId=null;routingVerified=false;candidate=null;caught=emptyList();detector.reset();resetApproval()
    if(running) {
-    if(network) {networkRunning=true;bridgeStatus="CONNECTING"}
+    if(osc) {oscSpectrumRunning=true;spectrumStatus="WAITING FOR OSC"}
+    else if(network) {networkRunning=true;bridgeStatus="CONNECTING"}
     else if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=true
    }
   }
@@ -281,6 +285,26 @@ class MainActivity:ComponentActivity() {
     finally { recovery.stop(); sessionGuard.end(); liveSession=sessionGuard.status(android.os.SystemClock.elapsedRealtime()); candidate=null; resetApproval(); try { recorder.stop() } catch (_:Exception) {}; recorder.release(); actualDeviceId=null; routingVerified=false }
    }
   }
+  LaunchedEffect(oscSpectrumRunning) {
+   if(!oscSpectrumRunning) return@LaunchedEffect
+   rtaLevels=List(31){-120f};rtaHistory=emptyList();candidate=null
+   withContext(Dispatchers.IO) {
+    try {
+     M32SpectrumProbe().use { probe ->
+      var renew=0L
+      var last=0L
+      while(kotlinx.coroutines.currentCoroutineContext().isActive && oscSpectrumRunning) {
+       val now=android.os.SystemClock.elapsedRealtime()
+       if(now>=renew){probe.subscribe();renew=now+3000}
+       val reply=probe.read()
+       if(reply!=null){last=now;withContext(Dispatchers.Main){spectrumStatus=reply}}
+       else if(now-last>2000) withContext(Dispatchers.Main){spectrumStatus="WAITING FOR SPECTRUM PACKETS"}
+      }
+     }
+    } catch(e:kotlinx.coroutines.CancellationException){throw e}
+    catch(e:Exception){withContext(Dispatchers.Main){spectrumStatus="OSC ERROR: ${e.message}";oscSpectrumRunning=false}}
+   }
+  }
   LaunchedEffect(networkRunning) {
    if(!networkRunning) return@LaunchedEffect
    withContext(Dispatchers.IO) {
@@ -330,10 +354,11 @@ class MainActivity:ComponentActivity() {
       Column(Modifier.weight(4f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(5.dp)) {
        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
         Button(onClick={
-         if(useNetworkInput) {networkRunning=!networkRunning;bridgeStatus=if(networkRunning) "CONNECTING" else "STOPPED"}
+         if(useOscSpectrum) {oscSpectrumRunning=!oscSpectrumRunning;spectrumStatus=if(oscSpectrumRunning) "WAITING FOR OSC" else "STOPPED"}
+         else if(useNetworkInput) {networkRunning=!networkRunning;bridgeStatus=if(networkRunning) "CONNECTING" else "STOPPED"}
          else if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=!detecting
          else permission.launch(Manifest.permission.RECORD_AUDIO)
-        },contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(if(useNetworkInput) networkRunning else detecting) "STOP RTA" else "START RTA")}
+        },contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(if(useOscSpectrum) oscSpectrumRunning else if(useNetworkInput) networkRunning else detecting) "STOP RTA" else "START RTA")}
         var targetMenuOpen by remember { mutableStateOf(false) }
         Box {
          OutlinedButton(onClick={targetMenuOpen=true},contentPadding=PaddingValues(horizontal=9.dp,vertical=0.dp),modifier=Modifier.height(38.dp)) {
@@ -369,7 +394,7 @@ class MainActivity:ComponentActivity() {
         var inputMenuOpen by remember { mutableStateOf(false) }
         Box {
          OutlinedButton(onClick={devices=AudioInputManager.available(this@MainActivity);inputMenuOpen=true},contentPadding=PaddingValues(horizontal=8.dp),modifier=Modifier.height(38.dp)) {
-          Text(if(useNetworkInput) "NET ▾" else if(useMixerUsbInput) "USB ▾" else "MIC ▾",fontSize=11.sp,color=gold)
+          Text(if(useOscSpectrum) "OSC ▾" else if(useNetworkInput) "NET ▾" else if(useMixerUsbInput) "USB ▾" else "MIC ▾",fontSize=11.sp,color=gold)
          }
          DropdownMenu(expanded=inputMenuOpen,onDismissRequest={inputMenuOpen=false}) {
           DropdownMenuItem(text={Text("PHONE MIC · Android default")},onClick={
@@ -377,7 +402,7 @@ class MainActivity:ComponentActivity() {
           })
           HorizontalDivider()
           DropdownMenuItem(text={Text("M32 NETWORK (PC) · EVO4 bridge")},onClick={switchRtaSource(true,false,null);inputMenuOpen=false})
-          DropdownMenuItem(text={Text("M32 DIRECT (NO PC) · audio transport required")},enabled=false,onClick={})
+          DropdownMenuItem(text={Text("M32 OSC · Spectrum diagnostic (no PC)")},onClick={switchRtaSource(false,false,null,true);inputMenuOpen=false})
           HorizontalDivider()
           if(usbInputs.isEmpty()) {
            DropdownMenuItem(text={Text("MIXER USB · no USB input detected")},enabled=false,onClick={})
@@ -398,6 +423,7 @@ class MainActivity:ComponentActivity() {
         }
 
        }
+       if(useOscSpectrum) Text("OSC RTA TEST · $spectrumStatus",color=gold,fontSize=10.sp)
        if(meterbridge && showGraphSettings) {
         Column(Modifier.fillMaxWidth().background(panel,RoundedCornerShape(5.dp)).padding(4.dp)) {
          Text(if(bridgeLevels==null) "M32 METERBRIDGE · NO VALID DATA" else "M32 METERBRIDGE · "+if(bridgeBus) "BUS" else "CH",color=gold,fontSize=10.sp)
