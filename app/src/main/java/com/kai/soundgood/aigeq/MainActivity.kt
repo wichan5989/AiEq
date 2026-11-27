@@ -135,8 +135,12 @@ class MainActivity:ComponentActivity() {
   var feedbackFixed by remember { mutableStateOf(true) }
   var autoNotchPreview by remember { mutableStateOf(false) }
   var caught by remember { mutableStateOf(listOf<Candidate>()) }
+  var notchHz by remember { mutableFloatStateOf(2500f) }
+  var notchGain by remember { mutableFloatStateOf(1f) }
+  var notchQ by remember { mutableFloatStateOf(8f) }
+  var notchSelected by remember { mutableStateOf(false) }
   LaunchedEffect(targetKind,targetNumber,detecting,feedbackThreshold,feedbackFixed) {
-   caught=emptyList();candidate=null;detector.reset()
+   caught=emptyList();candidate=null;notchSelected=false;detector.reset()
   }
   val rtaAnalyzer= remember { RtaAnalyzer() }
   var rtaLevels by remember { mutableStateOf(List(31) {-120f}) }
@@ -456,9 +460,21 @@ class MainActivity:ComponentActivity() {
         Text("AUTO NOTCH PREVIEW",color=gold,fontSize=10.sp)
        }
        caught.forEach { hit ->
+        OutlinedButton(onClick={notchHz=hit.hz.toFloat().coerceIn(80f,12000f);notchGain=1f;notchSelected=true},contentPadding=PaddingValues(horizontal=5.dp)) {Text("SELECT ${hit.hz.toInt()} Hz",fontSize=10.sp)}
         Text("${hit.hz} Hz · +${"%.1f".format(hit.prominenceDb)} dB"+if(autoNotchPreview) " · proposed −${minOf(feedbackMaxCut.toDouble(),kotlin.math.abs(hit.suggestedCutDb))} dB" else "",color=Color.White,fontSize=10.sp)
        }
        OutlinedButton(onClick={caught=emptyList();candidate=null;detector.reset()},contentPadding=PaddingValues(horizontal=6.dp)) {Text("RESET CAUGHT",fontSize=10.sp)}
+       if(notchSelected) {
+        Text("PEQ NOTCH · LOCAL PREVIEW ONLY",color=gold,fontSize=11.sp)
+        Text("FREQ ${notchHz.toInt()} Hz",color=Color.White,fontSize=10.sp)
+        Slider(value=kotlin.math.ln(notchHz),onValueChange={notchHz=kotlin.math.exp(it)},valueRange=kotlin.math.ln(80f)..kotlin.math.ln(12000f),modifier=Modifier.height(28.dp))
+        Text("GAIN −${"%.1f".format(minOf(notchGain,feedbackMaxCut))} dB",color=Color.White,fontSize=10.sp)
+        Slider(value=minOf(notchGain,feedbackMaxCut),onValueChange={notchGain=it},valueRange=0f..feedbackMaxCut,modifier=Modifier.height(28.dp))
+        Text("Q ${"%.1f".format(notchQ)}",color=Color.White,fontSize=10.sp)
+        Slider(value=notchQ,onValueChange={notchQ=it},valueRange=1f..10f,modifier=Modifier.height(28.dp))
+        Text("Approx. bandwidth ${(notchHz/notchQ).toInt()} Hz · not applied",color=muted,fontSize=10.sp)
+        OutlinedButton(onClick={notchSelected=false}) {Text("CLEAR PREVIEW",fontSize=10.sp)}
+       }
        Text("RMS ${"%.1f".format(captureHealth.rmsDbfs)} / PEAK ${"%.1f".format(captureHealth.peakDbfs)} dBFS",color=Color.White,style=MaterialTheme.typography.labelSmall)
        LinearProgressIndicator(progress=((captureHealth.rmsDbfs+60.0)/60.0).coerceIn(0.0,1.0).toFloat(),modifier=Modifier.fillMaxWidth())
        Text(when { !detecting -> "RTA stopped · start microphone capture"; !liveSession.canUseForAdvice -> "Checking audio frames / input route"; candidate!=null -> "DETECTED: ${candidate!!.hz} Hz"; else -> "Audio verified · listening for persistent feedback" },color=if(liveSession.canUseForAdvice) Color(0xFF58D69C) else muted,style=MaterialTheme.typography.bodySmall)
