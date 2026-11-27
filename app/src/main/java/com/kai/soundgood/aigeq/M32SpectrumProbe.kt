@@ -6,6 +6,16 @@ class M32SpectrumProbe : java.io.Closeable {
  private fun str(s:String):ByteArray {val b=(s+"\u0000").toByteArray(Charsets.UTF_8);return b+ByteArray((4-b.size%4)%4)}
  var sourceLabel:String="UNKNOWN"
   private set
+ fun selectSource(source:Int,post:Boolean) {
+  require(source in 2..72)
+  fun send(path:String,value:Int) {
+   val bytes=str(path)+str(",i")+ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(value).array()
+   socket.send(DatagramPacket(bytes,bytes.size))
+  }
+  sourceLabel="UNKNOWN"
+  send("/-prefs/rta/source",source)
+  send("/-prefs/rta/pos",if(post) 1 else 0)
+ }
  fun subscribe() {
   val query=str("/-stat/rtasource");socket.send(DatagramPacket(query,query.size))
   for(path in listOf("/meters/15")) {
