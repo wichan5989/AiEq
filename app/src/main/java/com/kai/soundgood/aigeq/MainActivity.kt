@@ -760,6 +760,12 @@ class MainActivity:ComponentActivity() {
          Text("B$band · T:${raw("/$band/type")} · ${freqHz?.let { "%.0f Hz".format(it) } ?: "F unknown"} · ${gainDb?.let { "%+.1f dB".format(it) } ?: "G unknown"}",color=Color.White,fontSize=10.sp)
          Text("Q raw: ${raw("/$band/q")} · ${if(gainDb!=null && kotlin.math.abs(gainDb)<0.1f) "Flat gain only — reserved" else "Preserve existing band"}",color=muted,fontSize=9.sp)
         }
+        val decoded=LivePeqDecoder.decode(snapshot)
+        if(decoded.size==target.peqBands) {
+         decoded.forEach { b ->
+          Text("B${b.number} ${LivePeqDecoder.types[b.type]} · ${"%.0f".format(b.hz)} Hz · ${"%+.2f".format(b.gainDb)} dB · Q ${"%.2f".format(b.q)}",color=gold,fontSize=10.sp)
+         }
+        } else Text("Decoded values unavailable · incomplete or invalid OSC",color=muted,fontSize=10.sp)
         Text("No band is assumed free. No automatic writes.",color=muted,fontSize=10.sp)
        }
        EqSafetyPanel(target,connected,oscHitHz,oscSpectrumRunning && oscPeakEnabled && activeRtaSource==target && spectrumStatus.startsWith("ACTIVE") && spectrumStatus.endsWith("MATCH (unverified mapping)"))
