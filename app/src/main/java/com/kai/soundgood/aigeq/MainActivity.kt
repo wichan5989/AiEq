@@ -184,6 +184,16 @@ class MainActivity:ComponentActivity() {
   var networkRunning by remember { mutableStateOf(false) }
   var bridgeHost by remember { mutableStateOf("192.168.0.101") }
   var bridgeStatus by remember { mutableStateOf("NOT CONNECTED") }
+  fun switchRtaSource(network:Boolean, usb:Boolean, device:Int?) {
+   val running=detecting || networkRunning
+   detecting=false;networkRunning=false
+   useNetworkInput=network;useMixerUsbInput=usb;chosenDeviceId=device
+   actualDeviceId=null;routingVerified=false;candidate=null;caught=emptyList();detector.reset();resetApproval()
+   if(running) {
+    if(network) {networkRunning=true;bridgeStatus="CONNECTING"}
+    else if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=true
+   }
+  }
   val usbInputs = devices.filter { it.usb }
   val actualInputName = devices.firstOrNull { it.id == actualDeviceId }?.name ?: "unknown"
 
@@ -196,7 +206,7 @@ class MainActivity:ComponentActivity() {
   var rtaStyle by remember { mutableStateOf(RtaStyle.PIXEL_LED) }
   val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (!granted) message="Microphone permission denied" else detecting=true }
   DisposableEffect(Unit) { onDispose { client.close() } }
-  LaunchedEffect(detecting) {
+  LaunchedEffect(detecting,useMixerUsbInput,chosenDeviceId) {
    if (!detecting) return@LaunchedEffect
    withContext(Dispatchers.IO) {
     val min=AudioRecord.getMinBufferSize(48000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT)
@@ -230,7 +240,7 @@ class MainActivity:ComponentActivity() {
      sessionGuard.routeVerified(routingVerified)
      if(!routingVerified) { message="Audio routed to unexpected device; analysis stopped"; detecting=false; return@withContext }
      val data=ShortArray(4096)
-     while (detecting) {
+     while (detecting && kotlinx.coroutines.currentCoroutineContext().isActive) {
       val n=recorder.read(data,0,data.size,AudioRecord.READ_NON_BLOCKING)
       val now=System.currentTimeMillis()
       if(n>0) {
@@ -267,7 +277,7 @@ class MainActivity:ComponentActivity() {
        }
       } else if(n==0) delay(10)
      }
-    } catch (e:Exception) { message="Audio error: ${e.message}"; detecting=false }
+    } catch (e:kotlinx.coroutines.CancellationException) { throw e } catch (e:Exception) { message="Audio error: ${e.message}"; detecting=false }
     finally { recovery.stop(); sessionGuard.end(); liveSession=sessionGuard.status(android.os.SystemClock.elapsedRealtime()); candidate=null; resetApproval(); try { recorder.stop() } catch (_:Exception) {}; recorder.release(); actualDeviceId=null; routingVerified=false }
    }
   }
@@ -283,7 +293,7 @@ class MainActivity:ComponentActivity() {
       val pcm=ByteArray(2048)
       val samples=ShortArray(1024)
       val assembler=PcmFrameAssembler(4096)
-      while(networkRunning) {
+      while(networkRunning && kotlinx.coroutines.currentCoroutineContext().isActive) {
        var received=0
        while(received<pcm.size) {
         val n=input.read(pcm,received,pcm.size-received)
@@ -300,9 +310,9 @@ class MainActivity:ComponentActivity() {
        }
       }
      }
-    } catch(e:Exception) {
-     bridgeStatus="NETWORK ERROR: ${e.message}"
-    } finally {networkRunning=false}
+    } catch(e:kotlinx.coroutines.CancellationException) { throw e } catch(e:Exception) {
+     if(useNetworkInput) {bridgeStatus="NETWORK ERROR: ${e.message}";networkRunning=false}
+    }
    }
   }
   MaterialTheme(colorScheme=darkColorScheme(primary=gold,background=bg,surface=panel,onBackground=Color.White,onSurface=Color.White)) {
@@ -358,15 +368,15 @@ class MainActivity:ComponentActivity() {
         }
         var inputMenuOpen by remember { mutableStateOf(false) }
         Box {
-         OutlinedButton(onClick={if(!detecting && !networkRunning) {devices=AudioInputManager.available(this@MainActivity);inputMenuOpen=true}},enabled=!detecting && !networkRunning,contentPadding=PaddingValues(horizontal=8.dp),modifier=Modifier.height(38.dp)) {
+         OutlinedButton(onClick={devices=AudioInputManager.available(this@MainActivity);inputMenuOpen=true},contentPadding=PaddingValues(horizontal=8.dp),modifier=Modifier.height(38.dp)) {
           Text(if(useNetworkInput) "NET ▾" else if(useMixerUsbInput) "USB ▾" else "MIC ▾",fontSize=11.sp,color=gold)
          }
          DropdownMenu(expanded=inputMenuOpen,onDismissRequest={inputMenuOpen=false}) {
           DropdownMenuItem(text={Text("PHONE MIC · Android default")},onClick={
-           useNetworkInput=false;useMixerUsbInput=false;chosenDeviceId=null;actualDeviceId=null;routingVerified=false;resetApproval();inputMenuOpen=false
+           switchRtaSource(false,false,null);inputMenuOpen=false
           })
           HorizontalDivider()
-          DropdownMenuItem(text={Text("M32 NETWORK (PC) · EVO4 bridge")},onClick={useNetworkInput=true;useMixerUsbInput=false;chosenDeviceId=null;inputMenuOpen=false})
+          DropdownMenuItem(text={Text("M32 NETWORK (PC) · EVO4 bridge")},onClick={switchRtaSource(true,false,null);inputMenuOpen=false})
           DropdownMenuItem(text={Text("M32 DIRECT (NO PC) · audio transport required")},enabled=false,onClick={})
           HorizontalDivider()
           if(usbInputs.isEmpty()) {
@@ -374,7 +384,7 @@ class MainActivity:ComponentActivity() {
           } else {
            usbInputs.forEach { device ->
             DropdownMenuItem(text={Text("MIXER USB · ${device.name} (#${device.id})")},onClick={
-             useNetworkInput=false;useMixerUsbInput=true;chosenDeviceId=device.id;actualDeviceId=null;routingVerified=false;resetApproval();inputMenuOpen=false
+             switchRtaSource(false,true,device.id);inputMenuOpen=false
             })
            }
           }
@@ -499,7 +509,7 @@ class MainActivity:ComponentActivity() {
            hz==3150.0 -> "3k15"
            hz==6300.0 -> "6k3"
            hz==12500.0 -> "12k5"
-           else -> "${(hz/1000.0).toInt()}k"
+           else -> "${(hz/1000.0).toString().removeSuffix(".0")}k"
           }
           Box(Modifier.weight(1f).height(16.dp),contentAlignment=Alignment.TopCenter) {
            Text(frequencyLabel,color=Color(0xFFD0D4D8),fontSize=7.sp,maxLines=1,softWrap=false)
