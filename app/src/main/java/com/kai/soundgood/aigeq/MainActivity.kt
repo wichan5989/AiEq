@@ -187,6 +187,21 @@ class MainActivity:ComponentActivity() {
   var spectrumStatus by remember { mutableStateOf("STOPPED") }
   var oscPeakEnabled by remember { mutableStateOf(false) }
   var oscPeakText by remember { mutableStateOf("") }
+  var oscBank by remember { mutableStateOf<List<Int>>(emptyList()) }
+  var oscUndo by remember { mutableStateOf<List<Int>?>(null) }
+  var oscAutoPreview by remember { mutableStateOf(false) }
+  var oscFixed by remember { mutableStateOf(true) }
+  val oscAutoOn by rememberUpdatedState(oscAutoPreview)
+  val oscFixedMode by rememberUpdatedState(oscFixed)
+  val oscHitHz=oscPeakText.substringAfter("~","").substringBefore(" Hz").toIntOrNull()
+  LaunchedEffect(oscHitHz,oscAutoPreview,oscFixed,oscSpectrumRunning,oscPeakEnabled) {
+   val hz=oscHitHz
+   if(!oscSpectrumRunning || !oscPeakEnabled) {oscBank=emptyList();oscUndo=null}
+   else if(!oscFixed && hz==null) oscBank=emptyList()
+   else if(oscAutoPreview && hz!=null && oscBank.size<4 && oscBank.none { kotlin.math.abs(kotlin.math.ln(it.toDouble()/hz))<0.08 }) {
+    oscUndo=oscBank;oscBank=oscBank+hz
+   }
+  }
   val oscPeakOn by rememberUpdatedState(oscPeakEnabled)
   val oscPeakThreshold by rememberUpdatedState(feedbackThreshold)
   var oscPost by remember { mutableStateOf(false) }
@@ -197,6 +212,7 @@ class MainActivity:ComponentActivity() {
    TargetKind.MAIN_LR -> "LR"
   } + if(oscPost) " POST" else " PRE"
   val currentOscRequest by rememberUpdatedState(requestedOscSource)
+  LaunchedEffect(requestedOscSource) {oscBank=emptyList();oscUndo=null;oscPeakText=""}
   var controlOscSource by remember { mutableStateOf(false) }
   val oscSourceId=when(activeRtaSource.kind) {
    TargetKind.CHANNEL -> activeRtaSource.number+1
@@ -336,13 +352,13 @@ class MainActivity:ComponentActivity() {
          (maxOf(0,index-1)..minOf(99,index+1)).maxOf { reply[it] }
         }
         rtaLevels=levels;rtaHistory=(rtaHistory+listOf(levels)).takeLast(90);captureFrames++
-        if(previousSource!=probe.sourceLabel){peakPreview.reset();previousSource=probe.sourceLabel}
+        if(previousSource!=probe.sourceLabel){peakPreview.reset();previousSource=probe.sourceLabel;oscBank=emptyList();oscUndo=null}
         oscPeakText=if(oscPeakOn && probe.sourceLabel==currentOscRequest && !probe.sourceLabel.startsWith("UNKNOWN")) {
          peakPreview.analyze(reply,now,oscPeakThreshold) ?: "Listening · tonal preview only"
-        } else {peakPreview.reset();""}
+        } else {peakPreview.reset();oscBank=emptyList();oscUndo=null;""}
         spectrumStatus="ACTIVE · M32: ${probe.sourceLabel} · "+if(probe.sourceLabel==currentOscRequest) "MATCH (unverified mapping)" else "SOURCE MISMATCH"
        }}
-       else if(now-last>2000) withContext(Dispatchers.Main){peakPreview.reset();oscPeakText="";spectrumStatus="WAITING FOR SPECTRUM PACKETS";rtaLevels=List(31){-120f};rtaHistory=emptyList()}
+       else if(now-last>2000) withContext(Dispatchers.Main){peakPreview.reset();oscBank=emptyList();oscUndo=null;oscPeakText="";spectrumStatus="WAITING FOR SPECTRUM PACKETS";rtaLevels=List(31){-120f};rtaHistory=emptyList()}
       }
      }
     } catch(e:kotlinx.coroutines.CancellationException){throw e}
@@ -469,7 +485,16 @@ class MainActivity:ComponentActivity() {
        }
        if(useOscSpectrum) {
         Text("OSC RTA · $spectrumStatus",color=gold,fontSize=10.sp)
-        if(oscPeakEnabled && oscSpectrumRunning && oscPeakText.isNotEmpty()) Text(oscPeakText,color=gold,fontSize=10.sp)
+        if(oscPeakEnabled && oscSpectrumRunning) {
+         Text(oscPeakText,color=gold,fontSize=10.sp)
+         Row(verticalAlignment=Alignment.CenterVertically) {
+          TextButton(onClick={oscAutoPreview=!oscAutoPreview}) {Text(if(oscAutoPreview) "AUTO PREVIEW ON" else "AUTO PREVIEW OFF",fontSize=10.sp)}
+          TextButton(onClick={oscFixed=!oscFixed;oscBank=emptyList();oscUndo=null}) {Text(if(oscFixed) "FIXED" else "LIVE",fontSize=10.sp)}
+          TextButton(onClick={oscAutoPreview=false;oscUndo?.let {oscBank=it};oscUndo=null},enabled=oscUndo!=null) {Text("UNDO",fontSize=10.sp)}
+          TextButton(onClick={oscBank=emptyList();oscUndo=null;oscAutoPreview=false}) {Text("RESET",fontSize=10.sp)}
+          Text(oscBank.joinToString(" · ") {"~${it}Hz −1dB"},color=gold,fontSize=10.sp)
+         }
+        }
         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
          Text("Wanted: $requestedOscSource",color=muted,fontSize=10.sp)
          TextButton(onClick={oscPeakEnabled=!oscPeakEnabled;oscPeakText=""}) {Text(if(oscPeakEnabled) "PEAK ON" else "PEAK OFF",fontSize=10.sp)}
@@ -528,6 +553,14 @@ class MainActivity:ComponentActivity() {
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
          RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxSize(),peakHold,meterDecay)
+         if(useOscSpectrum && oscSpectrumRunning && oscPeakEnabled) {
+          androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+           (oscBank + listOfNotNull(oscHitHz)).distinct().forEach { hz ->
+            val x=(kotlin.math.log10(hz/20.0)/3.0).toFloat().coerceIn(0f,1f)*size.width
+            drawLine(if(hz==oscHitHz) Color(0xFFFF5252) else Color(0xFFFFC857),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),strokeWidth=1.5.dp.toPx())
+           }
+          }
+         }
          if(eqChoice==EqKind.PEQ) {
           val snapshot=peqSnapshot?.takeIf { it.target==target && it.complete }
           val points=(1..target.peqBands).mapNotNull { band ->
