@@ -729,45 +729,7 @@ class MainActivity:ComponentActivity() {
         Text("${hit.hz} Hz · +${"%.1f".format(hit.prominenceDb)} dB"+if(autoNotchPreview) " · proposed −${minOf(feedbackMaxCut.toDouble(),kotlin.math.abs(hit.suggestedCutDb))} dB" else "",color=Color.White,fontSize=10.sp)
        }
        OutlinedButton(onClick={caught=emptyList();candidate=null;detector.reset()},contentPadding=PaddingValues(horizontal=6.dp)) {Text("RESET CAUGHT",fontSize=10.sp)}
-       Text("M32 PEQ · READ ONLY",color=gold,fontSize=10.sp)
-       var readBusy by remember { mutableStateOf(false) }
-       var readError by remember { mutableStateOf("") }
-       OutlinedButton(enabled=connected&&!readBusy,onClick={
-        readBusy=true;readError="";peqSnapshot=null
-        val requested=target
-        scope.launch {
-         try {
-          val result=withContext(Dispatchers.IO) {
-           val readerSocket=OscClient()
-           try {readerSocket.connect();M32LiveStateReader(readerSocket).inspectPeq(requested)}
-           finally {readerSocket.close()}
-          }
-          peqSnapshot=result
-         } catch(e:Exception) {readError=e.message?:"Read failed"}
-         finally {readBusy=false}
-        }
-       }) {Text(if(readBusy) "READING..." else "READ M32 PEQ",fontSize=10.sp)}
-       if(readError.isNotEmpty()) Text(readError,color=muted,fontSize=10.sp)
-       peqSnapshot?.takeIf { it.target==target }?.let { snapshot ->
-        Text(if(snapshot.complete) "Snapshot received · estimated F/G; Q raw" else "Partial snapshot · ${snapshot.missing.size} missing",color=muted,fontSize=10.sp)
-        fun raw(suffix:String):String = snapshot.values.entries.firstOrNull { it.key.endsWith(suffix) }?.value?.joinToString() ?: "?"
-        Text("EQ ON: ${raw("/on")}",color=Color.White,fontSize=10.sp)
-        for(band in 1..target.peqBands) {
-         val gainRaw=snapshot.values.entries.firstOrNull { it.key.endsWith("/$band/g") }?.value?.firstOrNull() as? Float
-         val freqRaw=snapshot.values.entries.firstOrNull { it.key.endsWith("/$band/f") }?.value?.firstOrNull() as? Float
-         val gainDb=gainRaw?.takeIf { it.isFinite() && it in 0f..1f }?.let { it*30f-15f }
-         val freqHz=freqRaw?.takeIf { it.isFinite() && it in 0f..1f }?.let { 20.0*Math.pow(1000.0,it.toDouble()) }
-         Text("B$band · T:${raw("/$band/type")} · ${freqHz?.let { "%.0f Hz".format(it) } ?: "F unknown"} · ${gainDb?.let { "%+.1f dB".format(it) } ?: "G unknown"}",color=Color.White,fontSize=10.sp)
-         Text("Q raw: ${raw("/$band/q")} · ${if(gainDb!=null && kotlin.math.abs(gainDb)<0.1f) "Flat gain only — reserved" else "Preserve existing band"}",color=muted,fontSize=9.sp)
-        }
-        val decoded=LivePeqDecoder.decode(snapshot)
-        if(decoded.size==target.peqBands) {
-         decoded.forEach { b ->
-          Text("B${b.number} ${LivePeqDecoder.types[b.type]} · ${"%.0f".format(b.hz)} Hz · ${"%+.2f".format(b.gainDb)} dB · Q ${"%.2f".format(b.q)}",color=gold,fontSize=10.sp)
-         }
-        } else Text("Decoded values unavailable · incomplete or invalid OSC",color=muted,fontSize=10.sp)
-        Text("No band is assumed free. No automatic writes.",color=muted,fontSize=10.sp)
-       }
+       LivePeqReadPanel(target,connected,peqSnapshot) { peqSnapshot=it }
        EqSafetyPanel(target,connected,oscHitHz,oscSpectrumRunning && oscPeakEnabled && activeRtaSource==target && spectrumStatus.startsWith("ACTIVE") && spectrumStatus.endsWith("MATCH (unverified mapping)"))
        Text("LOCAL NOTCH BANK ${savedNotches.size}/4",color=gold,fontSize=10.sp)
        savedNotches.forEachIndexed { index, band ->
@@ -1149,3 +1111,48 @@ class MainActivity:ComponentActivity() {
 }
 
 @Composable private fun OscUiSection(content: @Composable () -> Unit) { content() }
+
+@Composable
+private fun LivePeqReadPanel(target:EqTarget, connected:Boolean, peqSnapshot:M32PeqSnapshot?, onSnapshot:(M32PeqSnapshot?)->Unit) {
+ val scope=rememberCoroutineScope()
+       Text("M32 PEQ · READ ONLY",color=gold,fontSize=10.sp)
+       var readBusy by remember { mutableStateOf(false) }
+       var readError by remember { mutableStateOf("") }
+       OutlinedButton(enabled=connected&&!readBusy,onClick={
+        readBusy=true;readError="";onSnapshot(null)
+        val requested=target
+        scope.launch {
+         try {
+          val result=withContext(Dispatchers.IO) {
+           val readerSocket=OscClient()
+           try {readerSocket.connect();M32LiveStateReader(readerSocket).inspectPeq(requested)}
+           finally {readerSocket.close()}
+          }
+          onSnapshot(result)
+         } catch(e:Exception) {readError=e.message?:"Read failed"}
+         finally {readBusy=false}
+        }
+       }) {Text(if(readBusy) "READING..." else "READ M32 PEQ",fontSize=10.sp)}
+       if(readError.isNotEmpty()) Text(readError,color=muted,fontSize=10.sp)
+       peqSnapshot?.takeIf { it.target==target }?.let { snapshot ->
+        Text(if(snapshot.complete) "Snapshot received · estimated F/G; Q raw" else "Partial snapshot · ${snapshot.missing.size} missing",color=muted,fontSize=10.sp)
+        fun raw(suffix:String):String = snapshot.values.entries.firstOrNull { it.key.endsWith(suffix) }?.value?.joinToString() ?: "?"
+        Text("EQ ON: ${raw("/on")}",color=Color.White,fontSize=10.sp)
+        for(band in 1..target.peqBands) {
+         val gainRaw=snapshot.values.entries.firstOrNull { it.key.endsWith("/$band/g") }?.value?.firstOrNull() as? Float
+         val freqRaw=snapshot.values.entries.firstOrNull { it.key.endsWith("/$band/f") }?.value?.firstOrNull() as? Float
+         val gainDb=gainRaw?.takeIf { it.isFinite() && it in 0f..1f }?.let { it*30f-15f }
+         val freqHz=freqRaw?.takeIf { it.isFinite() && it in 0f..1f }?.let { 20.0*Math.pow(1000.0,it.toDouble()) }
+         Text("B$band · T:${raw("/$band/type")} · ${freqHz?.let { "%.0f Hz".format(it) } ?: "F unknown"} · ${gainDb?.let { "%+.1f dB".format(it) } ?: "G unknown"}",color=Color.White,fontSize=10.sp)
+         Text("Q raw: ${raw("/$band/q")} · ${if(gainDb!=null && kotlin.math.abs(gainDb)<0.1f) "Flat gain only — reserved" else "Preserve existing band"}",color=muted,fontSize=9.sp)
+        }
+        val decoded=LivePeqDecoder.decode(snapshot)
+        if(decoded.size==target.peqBands) {
+         decoded.forEach { b ->
+          Text("B${b.number} ${LivePeqDecoder.types[b.type]} · ${"%.0f".format(b.hz)} Hz · ${"%+.2f".format(b.gainDb)} dB · Q ${"%.2f".format(b.q)}",color=gold,fontSize=10.sp)
+         }
+        } else Text("Decoded values unavailable · incomplete or invalid OSC",color=muted,fontSize=10.sp)
+        Text("No band is assumed free. No automatic writes.",color=muted,fontSize=10.sp)
+       }
+
+}
