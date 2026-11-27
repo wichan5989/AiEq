@@ -436,9 +436,30 @@ class MainActivity:ComponentActivity() {
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
          RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxSize(),peakHold,meterDecay)
+         if(eqChoice==EqKind.PEQ) {
+          val snapshot=peqSnapshot?.takeIf { it.target==target && it.complete }
+          val points=(1..target.peqBands).mapNotNull { band ->
+           fun raw(key:String)=snapshot?.values?.entries?.firstOrNull { it.key.endsWith("/$band/$key") }?.value?.firstOrNull() as? Float
+           val f=raw("f");val g=raw("g")
+           if(f!=null && g!=null && f.isFinite() && g.isFinite() && f in 0f..1f && g in 0f..1f) Pair(20.0*Math.pow(1000.0,f.toDouble()),g*30f-15f) else null
+          }
+          androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+           val zero=size.height*0.25f
+           points.forEach { (hz,db) ->
+            val x=(kotlin.math.log10(hz/20.0)/3.0).toFloat()*size.width
+            val y=(zero-db*size.height/18f).coerceIn(0f,size.height)
+            drawCircle(Color(0xFF58D69C),radius=4.dp.toPx(),center=androidx.compose.ui.geometry.Offset(x,y))
+           }
+           candidate?.hz?.takeIf { it.isFinite() && it in 20.0..20000.0 }?.let { hz ->
+            val x=(kotlin.math.log10(hz/20.0)/3.0).toFloat()*size.width
+            drawLine(Color(0xFFFF5252),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),strokeWidth=1.5.dp.toPx())
+           }
+          }
+          Text("GREEN: M32 F/G estimates · RED: tonal candidate",color=Color(0xFF58D69C),fontSize=9.sp,modifier=Modifier.align(Alignment.BottomStart))
+         }
          if(eqChoice==EqKind.PEQ && (savedNotches.isNotEmpty() || notchSelected)) {
           val bands=savedNotches.filterIndexed { i,_ -> !notchSelected || i!=editNotch } + if(notchSelected) listOf(Triple(notchHz,notchGain,notchQ)) else emptyList()
-          Canvas(Modifier.fillMaxSize()) {
+          androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
            val mid=size.height*0.25f
            drawLine(Color(0x88D9AA59),androidx.compose.ui.geometry.Offset(0f,mid),androidx.compose.ui.geometry.Offset(size.width,mid))
            val curve=androidx.compose.ui.graphics.Path()
