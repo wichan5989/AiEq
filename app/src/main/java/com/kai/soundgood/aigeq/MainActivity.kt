@@ -509,6 +509,34 @@ class MainActivity:ComponentActivity() {
         Text("${hit.hz} Hz · +${"%.1f".format(hit.prominenceDb)} dB"+if(autoNotchPreview) " · proposed −${minOf(feedbackMaxCut.toDouble(),kotlin.math.abs(hit.suggestedCutDb))} dB" else "",color=Color.White,fontSize=10.sp)
        }
        OutlinedButton(onClick={caught=emptyList();candidate=null;detector.reset()},contentPadding=PaddingValues(horizontal=6.dp)) {Text("RESET CAUGHT",fontSize=10.sp)}
+       Text("M32 PEQ · READ ONLY",color=gold,fontSize=10.sp)
+       var readBusy by remember { mutableStateOf(false) }
+       var readError by remember { mutableStateOf("") }
+       OutlinedButton(enabled=connected&&!readBusy,onClick={
+        readBusy=true;readError="";peqSnapshot=null
+        val requested=target
+        scope.launch {
+         try {
+          val result=withContext(Dispatchers.IO) {
+           val readerSocket=OscClient()
+           try {readerSocket.connect();M32LiveStateReader(readerSocket).inspectPeq(requested)}
+           finally {readerSocket.close()}
+          }
+          peqSnapshot=result
+         } catch(e:Exception) {readError=e.message?:"Read failed"}
+         finally {readBusy=false}
+        }
+       }) {Text(if(readBusy) "READING..." else "READ M32 PEQ",fontSize=10.sp)}
+       if(readError.isNotEmpty()) Text(readError,color=muted,fontSize=10.sp)
+       peqSnapshot?.takeIf { it.target==target }?.let { snapshot ->
+        Text(if(snapshot.complete) "Snapshot received · raw OSC values" else "Partial snapshot · ${snapshot.missing.size} missing",color=muted,fontSize=10.sp)
+        fun raw(suffix:String):String = snapshot.values.entries.firstOrNull { it.key.endsWith(suffix) }?.value?.joinToString() ?: "?"
+        Text("EQ ON: ${raw("/on")}",color=Color.White,fontSize=10.sp)
+        for(band in 1..target.peqBands) {
+         Text("B$band  T:${raw("/$band/type")} F:${raw("/$band/f")} G:${raw("/$band/g")} Q:${raw("/$band/q")}",color=Color.White,fontSize=10.sp)
+        }
+        Text("No band is assumed free. No automatic writes.",color=muted,fontSize=10.sp)
+       }
        Text("LOCAL NOTCH BANK ${savedNotches.size}/4",color=gold,fontSize=10.sp)
        savedNotches.forEachIndexed { index, band ->
         Row(verticalAlignment=Alignment.CenterVertically) {
