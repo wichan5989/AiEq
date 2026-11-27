@@ -185,6 +185,14 @@ class MainActivity:ComponentActivity() {
   var useOscSpectrum by remember { mutableStateOf(false) }
   var oscSpectrumRunning by remember { mutableStateOf(false) }
   var spectrumStatus by remember { mutableStateOf("STOPPED") }
+  var oscPost by remember { mutableStateOf(false) }
+  val requestedOscSource=when(activeRtaSource.kind) {
+   TargetKind.CHANNEL -> "CH ${activeRtaSource.number}"
+   TargetKind.BUS -> "BUS ${activeRtaSource.number}"
+   TargetKind.MATRIX -> "MATRIX ${activeRtaSource.number}"
+   TargetKind.MAIN_LR -> "LR"
+  } + if(oscPost) " POST" else " PRE"
+  val currentOscRequest by rememberUpdatedState(requestedOscSource)
   var bridgeHost by remember { mutableStateOf("192.168.0.101") }
   var bridgeStatus by remember { mutableStateOf("NOT CONNECTED") }
   fun switchRtaSource(network:Boolean, usb:Boolean, device:Int?, osc:Boolean=false) {
@@ -303,7 +311,7 @@ class MainActivity:ComponentActivity() {
          (maxOf(0,index-1)..minOf(99,index+1)).maxOf { reply[it] }
         }
         rtaLevels=levels;rtaHistory=(rtaHistory+listOf(levels)).takeLast(90);captureFrames++
-        spectrumStatus="ACTIVE · 100 BINS · M32: ${probe.sourceLabel} · READ ONLY"
+        spectrumStatus="ACTIVE · M32: ${probe.sourceLabel} · "+if(probe.sourceLabel==currentOscRequest) "MATCH (unverified mapping)" else "SOURCE MISMATCH"
        }}
        else if(now-last>2000) withContext(Dispatchers.Main){spectrumStatus="WAITING FOR SPECTRUM PACKETS";rtaLevels=List(31){-120f};rtaHistory=emptyList()}
       }
@@ -430,7 +438,15 @@ class MainActivity:ComponentActivity() {
         }
 
        }
-       if(useOscSpectrum) Text("OSC RTA · $spectrumStatus",color=gold,fontSize=10.sp)
+       if(useOscSpectrum) {
+        Text("OSC RTA · $spectrumStatus",color=gold,fontSize=10.sp)
+        Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+         Text("Wanted: $requestedOscSource",color=muted,fontSize=10.sp)
+         TextButton(onClick={rtaSourceMode=RtaSourceMode.FOLLOW;rtaLocked=false;frozenRtaSource=null}) {Text("FOLLOW",fontSize=10.sp)}
+         TextButton(onClick={if(!rtaLocked) frozenRtaSource=activeRtaSource else frozenRtaSource=null;rtaLocked=!rtaLocked}) {Text(if(rtaLocked) "UNLOCK" else "LOCK",fontSize=10.sp)}
+         TextButton(onClick={oscPost=!oscPost}) {Text(if(oscPost) "POST" else "PRE",fontSize=10.sp)}
+        }
+       }
        if(meterbridge && showGraphSettings) {
         Column(Modifier.fillMaxWidth().background(panel,RoundedCornerShape(5.dp)).padding(4.dp)) {
          Text(if(bridgeLevels==null) "M32 METERBRIDGE · NO VALID DATA" else "M32 METERBRIDGE · "+if(bridgeBus) "BUS" else "CH",color=gold,fontSize=10.sp)
