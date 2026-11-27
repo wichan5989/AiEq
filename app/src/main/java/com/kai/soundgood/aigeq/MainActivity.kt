@@ -203,7 +203,10 @@ class MainActivity:ComponentActivity() {
    }
   }
   val oscPeakOn by rememberUpdatedState(oscPeakEnabled)
-  val oscPeakThreshold by rememberUpdatedState(feedbackThreshold)
+  var oscSensitivity by remember { mutableIntStateOf(1) }
+  var oscHoldMs by remember { mutableStateOf(1200L) }
+  val oscPeakThreshold by rememberUpdatedState(listOf(16f,12f,8f)[oscSensitivity])
+  val oscHold by rememberUpdatedState(oscHoldMs)
   var oscPost by remember { mutableStateOf(false) }
   val requestedOscSource=when(activeRtaSource.kind) {
    TargetKind.CHANNEL -> "CH ${activeRtaSource.number}"
@@ -354,7 +357,7 @@ class MainActivity:ComponentActivity() {
         rtaLevels=levels;rtaHistory=(rtaHistory+listOf(levels)).takeLast(90);captureFrames++
         if(previousSource!=probe.sourceLabel){peakPreview.reset();previousSource=probe.sourceLabel;oscBank=emptyList();oscUndo=null}
         oscPeakText=if(oscPeakOn && probe.sourceLabel==currentOscRequest && !probe.sourceLabel.startsWith("UNKNOWN")) {
-         peakPreview.analyze(reply,now,oscPeakThreshold) ?: "Listening · tonal preview only"
+         peakPreview.analyze(reply,now,oscPeakThreshold,oscHold) ?: "Listening · tonal preview only"
         } else {peakPreview.reset();oscBank=emptyList();oscUndo=null;""}
         spectrumStatus="ACTIVE · M32: ${probe.sourceLabel} · "+if(probe.sourceLabel==currentOscRequest) "MATCH (unverified mapping)" else "SOURCE MISMATCH"
        }}
@@ -488,6 +491,8 @@ class MainActivity:ComponentActivity() {
         if(oscPeakEnabled && oscSpectrumRunning) {
          Text(oscPeakText,color=gold,fontSize=10.sp)
          Row(verticalAlignment=Alignment.CenterVertically) {
+          TextButton(onClick={oscSensitivity=(oscSensitivity+1)%3;oscPeakText="";oscBank=emptyList();oscUndo=null}) {Text(listOf("SENS LOW","SENS MED","SENS HIGH")[oscSensitivity],fontSize=10.sp)}
+          TextButton(onClick={oscHoldMs=when(oscHoldMs){700L->1200L;1200L->2000L;else->700L};oscPeakText="";oscBank=emptyList();oscUndo=null}) {Text("${oscHoldMs}ms",fontSize=10.sp)}
           TextButton(onClick={oscAutoPreview=!oscAutoPreview}) {Text(if(oscAutoPreview) "AUTO PREVIEW ON" else "AUTO PREVIEW OFF",fontSize=10.sp)}
           TextButton(onClick={oscFixed=!oscFixed;oscBank=emptyList();oscUndo=null}) {Text(if(oscFixed) "FIXED" else "LIVE",fontSize=10.sp)}
           TextButton(onClick={oscAutoPreview=false;oscUndo?.let {oscBank=it};oscUndo=null},enabled=oscUndo!=null) {Text("UNDO",fontSize=10.sp)}
