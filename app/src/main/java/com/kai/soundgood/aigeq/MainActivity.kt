@@ -47,8 +47,9 @@ class MainActivity:ComponentActivity() {
  @Composable private fun Screen() {
   val scope= rememberCoroutineScope()
   var advancedView by remember { mutableStateOf(false) }
-  BackHandler(enabled=advancedView) {
-   advancedView=false
+  var showGraphSettings by remember { mutableStateOf(false) }
+  BackHandler(enabled=advancedView || showGraphSettings) {
+   if(advancedView) advancedView=false else showGraphSettings=false
   }
   var settingsTab by remember { mutableStateOf("METERING") }
   var meterbridge by remember { mutableStateOf(false) }
@@ -305,19 +306,24 @@ class MainActivity:ComponentActivity() {
    }
   }
   MaterialTheme(colorScheme=darkColorScheme(primary=gold,background=bg,surface=panel,onBackground=Color.White,onSurface=Color.White)) {
-   Box(Modifier.fillMaxSize().background(bg)) {
+   Box(Modifier.fillMaxSize().background(bg).systemBarsPadding()) {
    if(!advancedView) {
     Column(Modifier.fillMaxSize().padding(8.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
      Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-      Text("KAI SOUNDGOOD  /  Ai GEQ",color=gold,fontWeight=FontWeight.Black)
-      Text(if(connected) "M32 OSC REPLIED" else "M32 OFFLINE",color=if(connected) Color(0xFF58D69C) else muted)
-      Text("READ ONLY · EQ LOCKED",color=gold)
+      Text("KAI Ai GEQ",color=gold,fontWeight=FontWeight.Black,fontSize=13.sp)
+      Text(if(connected) "OSC OK" else "OFFLINE",color=if(connected) Color(0xFF58D69C) else muted,fontSize=11.sp)
+      Text("EQ LOCKED",color=gold,fontSize=10.sp)
       Spacer(Modifier.weight(1f))
-      OutlinedButton(onClick={advancedView=true},contentPadding=PaddingValues(horizontal=10.dp)) {Text("SETTINGS / ADVANCED")}
+      OutlinedButton(onClick={showGraphSettings=!showGraphSettings},contentPadding=PaddingValues(horizontal=8.dp),modifier=Modifier.height(32.dp)) {Text(if(showGraphSettings) "CLOSE" else "SETTINGS",fontSize=11.sp)}
      }
      Row(Modifier.fillMaxWidth().weight(1f),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
       Column(Modifier.weight(4f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-       Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+       Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+        Button(onClick={
+         if(useNetworkInput) {networkRunning=!networkRunning;bridgeStatus=if(networkRunning) "CONNECTING" else "STOPPED"}
+         else if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=!detecting
+         else permission.launch(Manifest.permission.RECORD_AUDIO)
+        },contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(if(useNetworkInput) networkRunning else detecting) "STOP RTA" else "START RTA")}
         var targetMenuOpen by remember { mutableStateOf(false) }
         Box {
          OutlinedButton(onClick={targetMenuOpen=true},contentPadding=PaddingValues(horizontal=9.dp,vertical=0.dp),modifier=Modifier.height(38.dp)) {
@@ -344,17 +350,16 @@ class MainActivity:ComponentActivity() {
           }
          }
         }
-        OutlinedButton(onClick={if(targetNumber>1){targetNumber--;resetApproval()}},enabled=targetNumber>1,contentPadding=PaddingValues(horizontal=7.dp),modifier=Modifier.height(38.dp)) {Text("−")}
-        OutlinedButton(onClick={if(targetNumber<maxTarget){targetNumber++;resetApproval()}},enabled=targetNumber<maxTarget,contentPadding=PaddingValues(horizontal=7.dp),modifier=Modifier.height(38.dp)) {Text("+")}
+        if(showGraphSettings) OutlinedButton(onClick={if(targetNumber>1){targetNumber--;resetApproval()}},enabled=targetNumber>1,contentPadding=PaddingValues(horizontal=7.dp),modifier=Modifier.height(38.dp)) {Text("−")}
+        if(showGraphSettings) OutlinedButton(onClick={if(targetNumber<maxTarget){targetNumber++;resetApproval()}},enabled=targetNumber<maxTarget,contentPadding=PaddingValues(horizontal=7.dp),modifier=Modifier.height(38.dp)) {Text("+")}
         Text("EQ",color=muted,fontSize=11.sp)
         listOf(EqKind.OFF,EqKind.GEQ,EqKind.PEQ).forEach { kind ->
          FilterChip(selected=eqChoice==kind,onClick={eqChoice=kind;resetApproval()},label={Text(kind.name,fontSize=10.sp)},modifier=Modifier.height(34.dp))
         }
-        Spacer(Modifier.weight(1f))
         var inputMenuOpen by remember { mutableStateOf(false) }
         Box {
          OutlinedButton(onClick={if(!detecting && !networkRunning) {devices=AudioInputManager.available(this@MainActivity);inputMenuOpen=true}},enabled=!detecting && !networkRunning,contentPadding=PaddingValues(horizontal=8.dp),modifier=Modifier.height(38.dp)) {
-          Text(if(useNetworkInput) "RTA: M32 NETWORK ▾" else if(useMixerUsbInput) "RTA: MIXER USB ▾" else "RTA: PHONE MIC ▾",fontSize=11.sp,color=gold)
+          Text(if(useNetworkInput) "NET ▾" else if(useMixerUsbInput) "USB ▾" else "MIC ▾",fontSize=11.sp,color=gold)
          }
          DropdownMenu(expanded=inputMenuOpen,onDismissRequest={inputMenuOpen=false}) {
           DropdownMenuItem(text={Text("PHONE MIC · Android default")},onClick={
@@ -375,19 +380,15 @@ class MainActivity:ComponentActivity() {
           }
          }
         }
-        Text(if(useNetworkInput) bridgeStatus else if(detecting) {
+        if(showGraphSettings) Text(if(useNetworkInput) bridgeStatus else if(detecting) {
          if(routingVerified) "ACTIVE: ${if(useMixerUsbInput) "USB" else "PHONE"} · $actualInputName" else "INPUT ROUTE UNVERIFIED"
         } else if(useMixerUsbInput) "USB SELECTED · NOT CAPTURING" else "PHONE SELECTED · NOT CAPTURING",color=if(detecting && routingVerified) Color(0xFF58D69C) else muted,fontSize=9.sp,maxLines=1)
-        if(useNetworkInput) {
+        if(useNetworkInput && showGraphSettings) {
          OutlinedTextField(value=bridgeHost,onValueChange={bridgeHost=it},singleLine=true,label={Text("PC IP",fontSize=10.sp)},modifier=Modifier.width(145.dp).height(54.dp))
         }
-        Button(onClick={
-         if(useNetworkInput) {networkRunning=!networkRunning;bridgeStatus=if(networkRunning) "CONNECTING" else "STOPPED"}
-         else if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) detecting=!detecting
-         else permission.launch(Manifest.permission.RECORD_AUDIO)
-        },contentPadding=PaddingValues(horizontal=10.dp)) {Text(if(if(useNetworkInput) networkRunning else detecting) "STOP RTA" else "START RTA")}
+
        }
-       if(meterbridge) {
+       if(meterbridge && showGraphSettings) {
         Column(Modifier.fillMaxWidth().background(panel,RoundedCornerShape(5.dp)).padding(4.dp)) {
          Text(if(bridgeLevels==null) "M32 METERBRIDGE · NO VALID DATA" else "M32 METERBRIDGE · "+if(bridgeBus) "BUS" else "CH",color=gold,fontSize=10.sp)
          val count=(meterCount.toIntOrNull() ?: if(bridgeBus) 16 else 32).coerceAtMost(if(bridgeBus) 16 else 32)
@@ -500,17 +501,18 @@ class MainActivity:ComponentActivity() {
            hz==12500.0 -> "12k5"
            else -> "${(hz/1000.0).toInt()}k"
           }
-          Box(Modifier.weight(1f).height(37.dp),contentAlignment=Alignment.TopCenter) {
+          Box(Modifier.weight(1f).height(16.dp),contentAlignment=Alignment.TopCenter) {
            Text(frequencyLabel,color=Color(0xFFD0D4D8),fontSize=7.sp,maxLines=1,softWrap=false)
           }
          }
         }
        }
       }
-      Column(Modifier.weight(1.35f).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+      if(showGraphSettings) Column(Modifier.weight(2.5f).fillMaxHeight().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+       OutlinedButton(onClick={advancedView=true},modifier=Modifier.fillMaxWidth()) {Text("ADVANCED SETTINGS",fontSize=11.sp)}
        ClassicDbMeter(captureHealth.rmsDbfs,captureHealth.peakDbfs,minInputDbfs,maxInputDbfs,
-        onReset={minInputDbfs=null;maxInputDbfs=null},modifier=Modifier.fillMaxWidth().weight(1.1f))
-       Column(Modifier.fillMaxWidth().weight(0.9f).background(panel,RoundedCornerShape(7.dp)).padding(5.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(3.dp)) {
+        onReset={minInputDbfs=null;maxInputDbfs=null},modifier=Modifier.fillMaxWidth().height(110.dp))
+       Column(Modifier.fillMaxWidth().background(panel,RoundedCornerShape(7.dp)).padding(5.dp),verticalArrangement=Arrangement.spacedBy(3.dp)) {
        Text("FEEDBACK · CAUGHT",color=gold,fontWeight=FontWeight.Bold)
        Text("THRESHOLD +${feedbackThreshold.toInt()} dB",color=Color.White,fontSize=10.sp)
        Slider(value=feedbackThreshold,onValueChange={feedbackThreshold=it},valueRange=6f..24f,steps=17,modifier=Modifier.height(28.dp))
