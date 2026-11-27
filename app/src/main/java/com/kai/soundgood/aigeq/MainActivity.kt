@@ -139,6 +139,9 @@ class MainActivity:ComponentActivity() {
   var notchGain by remember { mutableFloatStateOf(1f) }
   var notchQ by remember { mutableFloatStateOf(8f) }
   var notchSelected by remember { mutableStateOf(false) }
+  var savedNotches by remember(targetKind,targetNumber) { mutableStateOf(listOf<Triple<Float,Float,Float>>()) }
+  var editNotch by remember(targetKind,targetNumber) { mutableIntStateOf(-1) }
+  var notchUndo by remember(targetKind,targetNumber) { mutableStateOf<List<Triple<Float,Float,Float>>?>(null) }
   LaunchedEffect(targetKind,targetNumber,detecting,feedbackThreshold,feedbackFixed) {
    caught=emptyList();candidate=null;notchSelected=false;detector.reset()
   }
@@ -413,6 +416,27 @@ class MainActivity:ComponentActivity() {
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
          RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxSize(),peakHold,meterDecay)
+         if(eqChoice==EqKind.PEQ && (savedNotches.isNotEmpty() || notchSelected)) {
+          val bands=savedNotches.filterIndexed { i,_ -> !notchSelected || i!=editNotch } + if(notchSelected) listOf(Triple(notchHz,notchGain,notchQ)) else emptyList()
+          Canvas(Modifier.fillMaxSize()) {
+           val mid=size.height*0.25f
+           drawLine(Color(0x88D9AA59),androidx.compose.ui.geometry.Offset(0f,mid),androidx.compose.ui.geometry.Offset(size.width,mid))
+           val curve=androidx.compose.ui.graphics.Path()
+           for(i in 0..240) {
+            val f=20.0*Math.pow(1000.0,i/240.0)
+            val db=bands.sumOf { b ->
+             val a=Math.pow(10.0,-minOf(b.second,feedbackMaxCut)/40.0)
+             val v=b.third*(f/b.first-b.first/f)
+             10*kotlin.math.log10((v*v+a*a)/(v*v+1/(a*a)))
+            }
+            val x=size.width*i/240f
+            val y=mid-db.toFloat()*size.height/18f
+            if(i==0) curve.moveTo(x,y) else curve.lineTo(x,y)
+           }
+           drawPath(curve,Color(0xFFD9AA59),style=androidx.compose.ui.graphics.drawscope.Stroke(width=2.dp.toPx()))
+          }
+          Text("LOCAL PEQ PREVIEW · relative dB",color=gold,fontSize=9.sp,modifier=Modifier.align(Alignment.TopEnd))
+         }
          if(eqChoice==EqKind.GEQ) {
          Row(Modifier.fillMaxSize().padding(top=6.dp,bottom=4.dp),horizontalArrangement=Arrangement.spacedBy(1.dp)) {
           detector.centers.forEachIndexed { index,hz ->
@@ -460,10 +484,19 @@ class MainActivity:ComponentActivity() {
         Text("AUTO NOTCH PREVIEW",color=gold,fontSize=10.sp)
        }
        caught.forEach { hit ->
-        OutlinedButton(onClick={notchHz=hit.hz.toFloat().coerceIn(80f,12000f);notchGain=1f;notchSelected=true},contentPadding=PaddingValues(horizontal=5.dp)) {Text("SELECT ${hit.hz.toInt()} Hz",fontSize=10.sp)}
+        OutlinedButton(onClick={notchHz=hit.hz.toFloat().coerceIn(80f,12000f);notchGain=1f;editNotch=-1;notchSelected=true},contentPadding=PaddingValues(horizontal=5.dp)) {Text("SELECT ${hit.hz.toInt()} Hz",fontSize=10.sp)}
         Text("${hit.hz} Hz · +${"%.1f".format(hit.prominenceDb)} dB"+if(autoNotchPreview) " · proposed −${minOf(feedbackMaxCut.toDouble(),kotlin.math.abs(hit.suggestedCutDb))} dB" else "",color=Color.White,fontSize=10.sp)
        }
        OutlinedButton(onClick={caught=emptyList();candidate=null;detector.reset()},contentPadding=PaddingValues(horizontal=6.dp)) {Text("RESET CAUGHT",fontSize=10.sp)}
+       Text("LOCAL NOTCH BANK ${savedNotches.size}/4",color=gold,fontSize=10.sp)
+       savedNotches.forEachIndexed { index, band ->
+        Row(verticalAlignment=Alignment.CenterVertically) {
+         Text("${band.first.toInt()} Hz / −${minOf(band.second,feedbackMaxCut)} dB / Q ${band.third}",color=Color.White,fontSize=10.sp,modifier=Modifier.weight(1f))
+         TextButton(onClick={editNotch=index;notchHz=band.first;notchGain=band.second;notchQ=band.third;notchSelected=true}) {Text("EDIT",fontSize=10.sp)}
+         TextButton(onClick={notchUndo=savedNotches;savedNotches=savedNotches.filterIndexed { i,_ -> i!=index };notchSelected=false;editNotch=-1}) {Text("DEL",fontSize=10.sp)}
+        }
+       }
+       TextButton(enabled=notchUndo!=null,onClick={notchUndo?.let { savedNotches=it };notchUndo=null;notchSelected=false;editNotch=-1}) {Text("UNDO BANK")}
        if(notchSelected) {
         Text("PEQ NOTCH · LOCAL PREVIEW ONLY",color=gold,fontSize=11.sp)
         Text("FREQ ${notchHz.toInt()} Hz",color=Color.White,fontSize=10.sp)
@@ -473,7 +506,13 @@ class MainActivity:ComponentActivity() {
         Text("Q ${"%.1f".format(notchQ)}",color=Color.White,fontSize=10.sp)
         Slider(value=notchQ,onValueChange={notchQ=it},valueRange=1f..10f,modifier=Modifier.height(28.dp))
         Text("Approx. bandwidth ${(notchHz/notchQ).toInt()} Hz · not applied",color=muted,fontSize=10.sp)
-        OutlinedButton(onClick={notchSelected=false}) {Text("CLEAR PREVIEW",fontSize=10.sp)}
+        OutlinedButton(enabled=editNotch in savedNotches.indices || savedNotches.size<4,onClick={
+         notchUndo=savedNotches
+         val band=Triple(notchHz,minOf(notchGain,feedbackMaxCut),notchQ)
+         savedNotches=if(editNotch in savedNotches.indices) savedNotches.mapIndexed { i,b -> if(i==editNotch) band else b } else savedNotches+band
+         notchSelected=false;editNotch=-1
+        }) {Text("SAVE LOCAL NOTCH",fontSize=10.sp)}
+        OutlinedButton(onClick={notchSelected=false;editNotch=-1}) {Text("CLEAR PREVIEW",fontSize=10.sp)}
        }
        Text("RMS ${"%.1f".format(captureHealth.rmsDbfs)} / PEAK ${"%.1f".format(captureHealth.peakDbfs)} dBFS",color=Color.White,style=MaterialTheme.typography.labelSmall)
        LinearProgressIndicator(progress=((captureHealth.rmsDbfs+60.0)/60.0).coerceIn(0.0,1.0).toFloat(),modifier=Modifier.fillMaxWidth())
