@@ -529,11 +529,16 @@ class MainActivity:ComponentActivity() {
        }) {Text(if(readBusy) "READING..." else "READ M32 PEQ",fontSize=10.sp)}
        if(readError.isNotEmpty()) Text(readError,color=muted,fontSize=10.sp)
        peqSnapshot?.takeIf { it.target==target }?.let { snapshot ->
-        Text(if(snapshot.complete) "Snapshot received · raw OSC values" else "Partial snapshot · ${snapshot.missing.size} missing",color=muted,fontSize=10.sp)
+        Text(if(snapshot.complete) "Snapshot received · estimated F/G; Q raw" else "Partial snapshot · ${snapshot.missing.size} missing",color=muted,fontSize=10.sp)
         fun raw(suffix:String):String = snapshot.values.entries.firstOrNull { it.key.endsWith(suffix) }?.value?.joinToString() ?: "?"
         Text("EQ ON: ${raw("/on")}",color=Color.White,fontSize=10.sp)
         for(band in 1..target.peqBands) {
-         Text("B$band  T:${raw("/$band/type")} F:${raw("/$band/f")} G:${raw("/$band/g")} Q:${raw("/$band/q")}",color=Color.White,fontSize=10.sp)
+         val gainRaw=snapshot.values.entries.firstOrNull { it.key.endsWith("/$band/g") }?.value?.firstOrNull() as? Float
+         val freqRaw=snapshot.values.entries.firstOrNull { it.key.endsWith("/$band/f") }?.value?.firstOrNull() as? Float
+         val gainDb=gainRaw?.takeIf { it.isFinite() && it in 0f..1f }?.let { it*30f-15f }
+         val freqHz=freqRaw?.takeIf { it.isFinite() && it in 0f..1f }?.let { 20.0*Math.pow(1000.0,it.toDouble()) }
+         Text("B$band · T:${raw("/$band/type")} · ${freqHz?.let { "%.0f Hz".format(it) } ?: "F unknown"} · ${gainDb?.let { "%+.1f dB".format(it) } ?: "G unknown"}",color=Color.White,fontSize=10.sp)
+         Text("Q raw: ${raw("/$band/q")} · ${if(gainDb!=null && kotlin.math.abs(gainDb)<0.1f) "Flat gain only — reserved" else "Preserve existing band"}",color=muted,fontSize=9.sp)
         }
         Text("No band is assumed free. No automatic writes.",color=muted,fontSize=10.sp)
        }
