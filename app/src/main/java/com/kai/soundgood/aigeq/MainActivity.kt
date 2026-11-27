@@ -196,6 +196,9 @@ class MainActivity:ComponentActivity() {
   var oscReleaseMs by remember { mutableIntStateOf(1500) }
   var oscQ by remember { mutableFloatStateOf(8f) }
   var oscDepth by remember { mutableStateOf<Map<Int,Float>>(emptyMap()) }
+  var oscMaxCuts by remember { mutableStateOf<Map<Int,Float>>(emptyMap()) }
+  val oscLastActive=remember { mutableMapOf<Int,Long>() }
+  LaunchedEffect(oscBank) {oscMaxCuts=oscMaxCuts.filterKeys { it in oscBank };oscLastActive.keys.retainAll(oscBank.toSet())}
   val oscAutoOn by rememberUpdatedState(oscAutoPreview)
   val oscFixedMode by rememberUpdatedState(oscFixed)
   val oscHitHz=oscPeakText.substringAfter("~","").substringBefore(" Hz").toIntOrNull()
@@ -208,8 +211,8 @@ class MainActivity:ComponentActivity() {
    }
   }
   val oscPeakOn by rememberUpdatedState(oscPeakEnabled)
-  LaunchedEffect(oscSpectrumRunning,oscPeakEnabled,oscBank,oscHitHz,oscFixed,oscAutoPreview,oscAttackMs,oscDynamicHoldMs,oscReleaseMs) {
-   if(!oscSpectrumRunning || !oscPeakEnabled || oscBank.isEmpty()) {oscDepth=emptyMap();return@LaunchedEffect}
+  LaunchedEffect(oscSpectrumRunning,oscPeakEnabled,oscBank,oscHitHz,oscFixed,oscAutoPreview,oscAttackMs,oscDynamicHoldMs,oscReleaseMs,oscMaxCuts) {
+   if(!oscSpectrumRunning || !oscPeakEnabled || oscBank.isEmpty()) {oscDepth=emptyMap();oscLastActive.clear();return@LaunchedEffect}
    oscDepth=oscDepth.filterKeys { it in oscBank }
    val start=android.os.SystemClock.elapsedRealtime()
    var previous=start
@@ -220,11 +223,17 @@ class MainActivity:ComponentActivity() {
     oscDepth=oscBank.associateWith { hz ->
      val old=oscDepth[hz] ?: 0f
      val active=oscAutoPreview && (oscFixed || oscHitHz==hz)
-     if(active) (old+dt/oscAttackMs).coerceAtMost(1f)
-     else if(now-start<oscDynamicHoldMs) old
-     else (old-dt/oscReleaseMs).coerceAtLeast(0f)
+     val limit=oscMaxCuts[hz] ?: 1f
+     if(active) {oscLastActive[hz]=now;(old+limit*dt/oscAttackMs).coerceAtMost(limit)}
+     else if(now-(oscLastActive[hz] ?: 0L)<oscDynamicHoldMs) old.coerceAtMost(limit)
+     else (old-limit*dt/oscReleaseMs).coerceIn(0f,limit)
     }
-    if(!oscFixed && oscAutoPreview && now-start>=oscDynamicHoldMs+oscReleaseMs && oscDepth.values.all { it<=0f }) {oscBank=emptyList();break}
+    val total=oscDepth.values.sum()
+    if(total>6f) oscDepth=oscDepth.mapValues { it.value*6f/total }
+    if(!oscFixed && oscAutoPreview) {
+     val expired=oscBank.filter { it!=oscHitHz && now-(oscLastActive[it] ?: start)>=oscDynamicHoldMs+oscReleaseMs && (oscDepth[it] ?: 0f)<=0f }
+     if(expired.isNotEmpty()){oscBank=oscBank-expired.toSet();break}
+    }
     delay(40)
    }
   }
@@ -523,6 +532,17 @@ class MainActivity:ComponentActivity() {
           TextButton(onClick={oscAutoPreview=false;oscUndo?.let {oscBank=it};oscUndo=null},enabled=oscUndo!=null) {Text("UNDO",fontSize=10.sp)}
           TextButton(onClick={oscBank=emptyList();oscUndo=null;oscAutoPreview=false}) {Text("RESET",fontSize=10.sp)}
           Text(oscBank.joinToString(" · ") {"~${it}Hz −${"%.1f".format(oscDepth[it] ?: 0f)}dB"},color=gold,fontSize=10.sp)
+         }
+         if(showGraphSettings && oscBank.isNotEmpty()) Row(verticalAlignment=Alignment.CenterVertically) {
+          oscBank.forEach { hz ->
+           val limit=oscMaxCuts[hz] ?: 1f
+           TextButton(onClick={
+            val next=if(limit>=3f) 1f else limit+1f
+            val total=oscBank.filter { it!=hz }.sumOf { (oscMaxCuts[it] ?: 1f).toDouble() }
+            if(total+next<=6.0) oscMaxCuts=oscMaxCuts+(hz to next)
+            else oscMaxCuts=oscMaxCuts+(hz to 1f)
+           }) {Text("$hz Hz MAX −${limit.toInt()}dB",fontSize=10.sp)}
+          }
          }
          if(showGraphSettings) Row(verticalAlignment=Alignment.CenterVertically) {
           TextButton(onClick={oscAttackMs=when(oscAttackMs){50->150;150->300;else->50}}) {Text("ATT ${oscAttackMs}ms",fontSize=10.sp)}
