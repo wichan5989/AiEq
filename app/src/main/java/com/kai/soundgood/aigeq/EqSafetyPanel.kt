@@ -67,6 +67,29 @@ private val muted=Color(0xFF9CA3AF)
  var stored by remember(key){mutableStateOf(prefs.getString(key,null))}
  var reserved by remember(key){mutableStateOf(emptySet<Int>())}
  val currentKey by rememberUpdatedState(key)
+ var restorePreview by remember(key,connected,stored,reserved){mutableStateOf<List<String>>(emptyList())}
+ val currentPlan by rememberUpdatedState(reserved)
+ val currentConnected by rememberUpdatedState(connected)
+ fun compareBackup(baseline:String,live:String,plan:Set<Int>):List<String> {
+  val saved=org.json.JSONObject(baseline)
+  val actual=org.json.JSONObject(live)
+  require(saved.keys().asSequence().toSet()==actual.keys().asSequence().toSet())
+  fun display(array:org.json.JSONArray):String =
+   (0 until array.length()).joinToString(",") { i ->
+    val item=array.getJSONObject(i)
+    if(item.getString("type")=="f") Float.fromBits(item.getInt("value")).toString()
+    else item.get("value").toString()
+   }
+  return saved.keys().asSequence().sorted().mapNotNull { path ->
+   val old=saved.getJSONArray(path)
+   val now=actual.getJSONArray(path)
+   if(old.toString()==now.toString()) null else {
+    val band=path.substringBeforeLast("/").substringAfterLast("/").toIntOrNull()
+    val label=if(band!=null && band in plan) "PLAN" else "KEEP"
+    "$label · $path: "+display(now)+" → "+display(old)
+   }
+  }.toList()
+ }
 
   var safetyStatus by remember(key) { mutableStateOf("NO BASELINE · EQ LOCKED") }
   var safetyBusy by remember { mutableStateOf(false) }
@@ -99,6 +122,8 @@ private val muted=Color(0xFF9CA3AF)
         }) {Text("BACKUP PEQ",fontSize=10.sp)}
         TextButton(enabled=connected&&!safetyBusy&&stored!=null,onClick={
          val baseline=stored
+         val plan=reserved
+         restorePreview=emptyList()
          val requested=target
          safetyBusy=true
          scope.launch {
@@ -107,16 +132,25 @@ private val muted=Color(0xFF9CA3AF)
             val client=OscClient()
             try {client.connect();M32LiveStateReader(client).inspectPeq(requested)} finally {client.close()}
            }
-           if(currentKey==key) safetyStatus=when {
+           if(currentKey==key && currentConnected && currentPlan==plan) {
+           if(baseline!=null && snap.complete) restorePreview=compareBackup(baseline,encode(snap),plan)
+           safetyStatus=when {
             baseline==null || !snap.complete -> "READBACK INCOMPLETE · EQ LOCKED"
             encode(snap)!=baseline -> "EQ CHANGED EXTERNALLY · EQ LOCKED"
             else -> "BASELINE MATCH · EQ LOCKED"
            }
+           }
           } catch(e:Exception){safetyStatus="READBACK FAILED · EQ LOCKED"}
           finally{safetyBusy=false}
          }
-        }) {Text("VERIFY PEQ",fontSize=10.sp)}
+        }) {Text("VERIFY / RESTORE PREVIEW",fontSize=10.sp)}
         TextButton(enabled=!safetyBusy,onClick={prefs.edit().remove(key).apply();stored=null;reserved=emptySet();safetyStatus="NO BASELINE · EQ LOCKED"}) {Text("CLEAR",fontSize=10.sp)}
+       }
+       if(restorePreview.isNotEmpty()) {
+        Text("RESTORE PREVIEW · ${restorePreview.size} differences · NO WRITE",color=gold,fontSize=10.sp)
+        Column(Modifier.heightIn(max=100.dp).verticalScroll(rememberScrollState())) {
+         restorePreview.forEach { Text(it,color=muted,fontSize=9.sp) }
+        }
        }
        Text("Local persistent backup. PLAN is preview only. No restore or OSC EQ write.",color=muted,fontSize=9.sp)
 
