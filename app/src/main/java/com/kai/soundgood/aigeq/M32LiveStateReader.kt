@@ -59,6 +59,7 @@ class M32LiveStateReader(private val osc: OscClient) {
         val paths = buildList {
             add("$prefix/on")
             for (band in 1..target.peqBands) {
+                add("$prefix/$band/type")
                 add("$prefix/$band/f")
                 add("$prefix/$band/g")
                 add("$prefix/$band/q")
