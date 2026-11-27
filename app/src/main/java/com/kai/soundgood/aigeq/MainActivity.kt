@@ -762,7 +762,7 @@ class MainActivity:ComponentActivity() {
         }
         Text("No band is assumed free. No automatic writes.",color=muted,fontSize=10.sp)
        }
-       EqSafetyPanel(target,connected)
+       EqSafetyPanel(target,connected,oscHitHz,oscSpectrumRunning && oscPeakEnabled && activeRtaSource==target && spectrumStatus.startsWith("ACTIVE") && spectrumStatus.endsWith("MATCH (unverified mapping)"))
        Text("LOCAL NOTCH BANK ${savedNotches.size}/4",color=gold,fontSize=10.sp)
        savedNotches.forEachIndexed { index, band ->
         Row(verticalAlignment=Alignment.CenterVertically) {
