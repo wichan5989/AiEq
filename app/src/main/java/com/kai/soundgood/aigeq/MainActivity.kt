@@ -185,6 +185,10 @@ class MainActivity:ComponentActivity() {
   var useOscSpectrum by remember { mutableStateOf(false) }
   var oscSpectrumRunning by remember { mutableStateOf(false) }
   var spectrumStatus by remember { mutableStateOf("STOPPED") }
+  var oscPeakEnabled by remember { mutableStateOf(false) }
+  var oscPeakText by remember { mutableStateOf("") }
+  val oscPeakOn by rememberUpdatedState(oscPeakEnabled)
+  val oscPeakThreshold by rememberUpdatedState(feedbackThreshold)
   var oscPost by remember { mutableStateOf(false) }
   val requestedOscSource=when(activeRtaSource.kind) {
    TargetKind.CHANNEL -> "CH ${activeRtaSource.number}"
@@ -303,10 +307,12 @@ class MainActivity:ComponentActivity() {
   }
   LaunchedEffect(oscSpectrumRunning) {
    if(!oscSpectrumRunning) return@LaunchedEffect
-   rtaLevels=List(31){-120f};rtaHistory=emptyList();candidate=null
+   rtaLevels=List(31){-120f};rtaHistory=emptyList();candidate=null;oscPeakText=""
    withContext(Dispatchers.IO) {
     try {
      M32SpectrumProbe().use { probe ->
+      val peakPreview=OscPeakPreview()
+      var previousSource=""
       var renew=0L
       var last=0L
       var sent:Pair<Int,Boolean>?=null
@@ -316,6 +322,7 @@ class MainActivity:ComponentActivity() {
        if(command!=sent) {
         sent=command
         if(command!=null) {
+         peakPreview.reset()
          probe.selectSource(command.first,command.second)
          renew=0L
          withContext(Dispatchers.Main){rtaLevels=List(31){-120f};rtaHistory=emptyList();spectrumStatus="SOURCE CHANGE · WAITING FOR READBACK"}
@@ -329,9 +336,13 @@ class MainActivity:ComponentActivity() {
          (maxOf(0,index-1)..minOf(99,index+1)).maxOf { reply[it] }
         }
         rtaLevels=levels;rtaHistory=(rtaHistory+listOf(levels)).takeLast(90);captureFrames++
+        if(previousSource!=probe.sourceLabel){peakPreview.reset();previousSource=probe.sourceLabel}
+        oscPeakText=if(oscPeakOn && probe.sourceLabel==currentOscRequest && !probe.sourceLabel.startsWith("UNKNOWN")) {
+         peakPreview.analyze(reply,now,oscPeakThreshold) ?: "Listening · tonal preview only"
+        } else {peakPreview.reset();""}
         spectrumStatus="ACTIVE · M32: ${probe.sourceLabel} · "+if(probe.sourceLabel==currentOscRequest) "MATCH (unverified mapping)" else "SOURCE MISMATCH"
        }}
-       else if(now-last>2000) withContext(Dispatchers.Main){spectrumStatus="WAITING FOR SPECTRUM PACKETS";rtaLevels=List(31){-120f};rtaHistory=emptyList()}
+       else if(now-last>2000) withContext(Dispatchers.Main){peakPreview.reset();oscPeakText="";spectrumStatus="WAITING FOR SPECTRUM PACKETS";rtaLevels=List(31){-120f};rtaHistory=emptyList()}
       }
      }
     } catch(e:kotlinx.coroutines.CancellationException){throw e}
@@ -458,8 +469,10 @@ class MainActivity:ComponentActivity() {
        }
        if(useOscSpectrum) {
         Text("OSC RTA · $spectrumStatus",color=gold,fontSize=10.sp)
+        if(oscPeakEnabled && oscSpectrumRunning && oscPeakText.isNotEmpty()) Text(oscPeakText,color=gold,fontSize=10.sp)
         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
          Text("Wanted: $requestedOscSource",color=muted,fontSize=10.sp)
+         TextButton(onClick={oscPeakEnabled=!oscPeakEnabled;oscPeakText=""}) {Text(if(oscPeakEnabled) "PEAK ON" else "PEAK OFF",fontSize=10.sp)}
          TextButton(onClick={controlOscSource=!controlOscSource}) {Text(if(controlOscSource) "LINK ON" else "LINK OFF",fontSize=10.sp)}
          TextButton(onClick={rtaSourceMode=RtaSourceMode.FOLLOW;rtaLocked=false;frozenRtaSource=null}) {Text("FOLLOW",fontSize=10.sp)}
          TextButton(onClick={if(!rtaLocked) frozenRtaSource=activeRtaSource else frozenRtaSource=null;rtaLocked=!rtaLocked}) {Text(if(rtaLocked) "UNLOCK" else "LOCK",fontSize=10.sp)}
