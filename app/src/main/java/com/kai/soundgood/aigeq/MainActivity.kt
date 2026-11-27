@@ -249,7 +249,7 @@ class MainActivity:ComponentActivity() {
    TargetKind.MAIN_LR -> "LR"
   } + if(oscPost) " POST" else " PRE"
   val currentOscRequest by rememberUpdatedState(requestedOscSource)
-  LaunchedEffect(requestedOscSource) {oscBank=emptyList();oscUndo=null;oscPeakText=""}
+  LaunchedEffect(requestedOscSource) {oscAutoPreview=false;oscBank=emptyList();oscUndo=null;oscDepth=emptyMap();oscPeakText=""}
   var controlOscSource by remember { mutableStateOf(false) }
   val oscSourceId=when(activeRtaSource.kind) {
    TargetKind.CHANNEL -> activeRtaSource.number+1
@@ -359,7 +359,7 @@ class MainActivity:ComponentActivity() {
    }
   }
   LaunchedEffect(oscSpectrumRunning) {
-   if(!oscSpectrumRunning) return@LaunchedEffect
+   if(!oscSpectrumRunning) {oscAutoPreview=false;oscBank=emptyList();oscUndo=null;oscDepth=emptyMap();oscPeakText="";return@LaunchedEffect}
    rtaLevels=List(31){-120f};rtaHistory=emptyList();candidate=null;oscPeakText=""
    withContext(Dispatchers.IO) {
     try {
@@ -367,7 +367,7 @@ class MainActivity:ComponentActivity() {
       val peakPreview=OscPeakPreview()
       var previousSource=""
       var renew=0L
-      var last=0L
+      var last=android.os.SystemClock.elapsedRealtime()
       var sent:Pair<Int,Boolean>?=null
       while(kotlinx.coroutines.currentCoroutineContext().isActive && oscSpectrumRunning) {
        val now=android.os.SystemClock.elapsedRealtime()
@@ -378,7 +378,7 @@ class MainActivity:ComponentActivity() {
          peakPreview.reset()
          probe.selectSource(command.first,command.second)
          renew=0L
-         withContext(Dispatchers.Main){rtaLevels=List(31){-120f};rtaHistory=emptyList();spectrumStatus="SOURCE CHANGE · WAITING FOR READBACK"}
+         withContext(Dispatchers.Main){oscAutoPreview=false;oscBank=emptyList();oscUndo=null;oscDepth=emptyMap();oscPeakText="";rtaLevels=List(31){-120f};rtaHistory=emptyList();spectrumStatus="SOURCE CHANGE · WAITING FOR READBACK"}
         }
        }
        if(now>=renew){probe.subscribe();renew=now+1000}
@@ -389,17 +389,17 @@ class MainActivity:ComponentActivity() {
          (maxOf(0,index-1)..minOf(99,index+1)).maxOf { reply[it] }
         }
         rtaLevels=levels;rtaHistory=(rtaHistory+listOf(levels)).takeLast(90);captureFrames++
-        if(previousSource!=probe.sourceLabel){peakPreview.reset();previousSource=probe.sourceLabel;oscBank=emptyList();oscUndo=null}
+        if(previousSource!=probe.sourceLabel){peakPreview.reset();previousSource=probe.sourceLabel;oscAutoPreview=false;oscBank=emptyList();oscUndo=null;oscDepth=emptyMap()}
         oscPeakText=if(oscPeakOn && probe.sourceLabel==currentOscRequest && !probe.sourceLabel.startsWith("UNKNOWN")) {
          peakPreview.analyze(reply,now,oscPeakThreshold,oscHold) ?: "Listening · tonal preview only"
-        } else {peakPreview.reset();oscBank=emptyList();oscUndo=null;""}
+        } else {peakPreview.reset();oscAutoPreview=false;oscBank=emptyList();oscUndo=null;oscDepth=emptyMap();""}
         spectrumStatus="ACTIVE · M32: ${probe.sourceLabel} · "+if(probe.sourceLabel==currentOscRequest) "MATCH (unverified mapping)" else "SOURCE MISMATCH"
        }}
-       else if(now-last>2000) withContext(Dispatchers.Main){peakPreview.reset();oscBank=emptyList();oscUndo=null;oscPeakText="";spectrumStatus="WAITING FOR SPECTRUM PACKETS";rtaLevels=List(31){-120f};rtaHistory=emptyList()}
+       else if(android.os.SystemClock.elapsedRealtime()-last>2000) withContext(Dispatchers.Main){peakPreview.reset();oscAutoPreview=false;oscBank=emptyList();oscUndo=null;oscDepth=emptyMap();oscPeakText="";spectrumStatus="WATCHDOG · NO SPECTRUM · REARM MANUALLY";rtaLevels=List(31){-120f};rtaHistory=emptyList()}
       }
      }
     } catch(e:kotlinx.coroutines.CancellationException){throw e}
-    catch(e:Exception){withContext(Dispatchers.Main){spectrumStatus="OSC ERROR: ${e.message}";oscSpectrumRunning=false}}
+    catch(e:Exception){withContext(Dispatchers.Main){oscAutoPreview=false;oscBank=emptyList();oscUndo=null;oscDepth=emptyMap();oscPeakText="";spectrumStatus="OSC ERROR: ${e.message}";oscSpectrumRunning=false}}
    }
   }
   LaunchedEffect(networkRunning) {
