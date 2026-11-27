@@ -42,30 +42,63 @@ private val gold=Color(0xFFD9AA59)
 private val muted=Color(0xFF9CA3AF)
 @Composable internal fun EqSafetyPanel(target:EqTarget,connected:Boolean) {
  val scope=rememberCoroutineScope()
-  var safetyBaseline by remember { mutableStateOf<M32PeqSnapshot?>(null) }
-  var safetyStatus by remember { mutableStateOf("NO BASELINE · EQ LOCKED") }
+ val context=androidx.compose.ui.platform.LocalContext.current
+ val prefs=remember(context){context.getSharedPreferences("peq_safety_v1",Context.MODE_PRIVATE)}
+ val key="baseline_"+target.kind.name+"_"+target.number
+ fun encode(snapshot:M32PeqSnapshot):String {
+  val values=org.json.JSONObject()
+  snapshot.values.toSortedMap().forEach { (path,args) ->
+   val array=org.json.JSONArray()
+   args.forEach { arg ->
+    val item=org.json.JSONObject()
+    when(arg) {
+     is Float -> {item.put("type","f");item.put("value",arg.toRawBits())}
+     is Int -> {item.put("type","i");item.put("value",arg)}
+     is String -> {item.put("type","s");item.put("value",arg)}
+     is Boolean -> {item.put("type","b");item.put("value",arg)}
+     else -> error("Unsupported backup value")
+    }
+    array.put(item)
+   }
+   values.put(path,array)
+  }
+  return values.toString()
+ }
+ var stored by remember(key){mutableStateOf(prefs.getString(key,null))}
+ var reserved by remember(key){mutableStateOf(emptySet<Int>())}
+ val currentKey by rememberUpdatedState(key)
+
+  var safetyStatus by remember(key) { mutableStateOf("NO BASELINE · EQ LOCKED") }
   var safetyBusy by remember { mutableStateOf(false) }
        Text("OSC EQ SAFETY · READ ONLY",color=gold,fontSize=10.sp)
        Text(safetyStatus,color=muted,fontSize=10.sp)
-       Text("Baseline: "+(safetyBaseline?.target?.label ?: "NONE")+" · all bands reserved",color=muted,fontSize=10.sp)
+       Text("Baseline: "+(if(stored!=null) target.label+" · SAVED ON DEVICE" else "NONE"),color=muted,fontSize=10.sp)
+       Text("PREVIEW BAND ALLOCATION · no write permission",color=gold,fontSize=10.sp)
+       Row(verticalAlignment=Alignment.CenterVertically) {
+        for(band in 1..target.peqBands) {
+         TextButton(enabled=stored!=null&&!safetyBusy,onClick={
+          reserved=if(band in reserved) reserved-band else reserved+band
+         }) {Text("B$band "+if(band in reserved) "PLAN" else "KEEP",fontSize=10.sp)}
+        }
+       }
        Row(verticalAlignment=Alignment.CenterVertically) {
         TextButton(enabled=connected&&!safetyBusy,onClick={
          val requested=target
-         safetyBusy=true;safetyStatus="READING BASELINE · EQ LOCKED";safetyBaseline=null
+         safetyBusy=true;safetyStatus="READING BASELINE · EQ LOCKED"
          scope.launch {
           try {
            val snap=withContext(Dispatchers.IO) {
             val client=OscClient()
             try {client.connect();M32LiveStateReader(client).inspectPeq(requested)} finally {client.close()}
            }
-           if(snap.complete) {safetyBaseline=snap;safetyStatus="BASELINE CAPTURED · EQ LOCKED"}
+           if(snap.complete) {val encoded=encode(snap);val saved=withContext(Dispatchers.IO){prefs.edit().putString(key,encoded).commit()};if(currentKey==key){if(saved){stored=encoded;reserved=emptySet();safetyStatus="BASELINE SAVED · EQ LOCKED"}else safetyStatus="SAVE FAILED · EQ LOCKED"}}
            else safetyStatus="INCOMPLETE BASELINE · EQ LOCKED"
           } catch(e:Exception){safetyStatus="BASELINE FAILED · EQ LOCKED"}
           finally{safetyBusy=false}
          }
         }) {Text("BACKUP PEQ",fontSize=10.sp)}
-        TextButton(enabled=connected&&!safetyBusy&&safetyBaseline?.target==target,onClick={
-         val baseline=safetyBaseline
+        TextButton(enabled=connected&&!safetyBusy&&stored!=null,onClick={
+         val baseline=stored
          val requested=target
          safetyBusy=true
          scope.launch {
@@ -74,17 +107,17 @@ private val muted=Color(0xFF9CA3AF)
             val client=OscClient()
             try {client.connect();M32LiveStateReader(client).inspectPeq(requested)} finally {client.close()}
            }
-           safetyStatus=when {
+           if(currentKey==key) safetyStatus=when {
             baseline==null || !snap.complete -> "READBACK INCOMPLETE · EQ LOCKED"
-            snap.values!=baseline.values -> "EQ CHANGED EXTERNALLY · EQ LOCKED"
+            encode(snap)!=baseline -> "EQ CHANGED EXTERNALLY · EQ LOCKED"
             else -> "BASELINE MATCH · EQ LOCKED"
            }
           } catch(e:Exception){safetyStatus="READBACK FAILED · EQ LOCKED"}
           finally{safetyBusy=false}
          }
         }) {Text("VERIFY PEQ",fontSize=10.sp)}
-        TextButton(enabled=!safetyBusy,onClick={safetyBaseline=null;safetyStatus="NO BASELINE · EQ LOCKED"}) {Text("CLEAR",fontSize=10.sp)}
+        TextButton(enabled=!safetyBusy,onClick={prefs.edit().remove(key).apply();stored=null;reserved=emptySet();safetyStatus="NO BASELINE · EQ LOCKED"}) {Text("CLEAR",fontSize=10.sp)}
        }
-       Text("RAM backup only. No restore or OSC EQ write.",color=muted,fontSize=9.sp)
+       Text("Local persistent backup. PLAN is preview only. No restore or OSC EQ write.",color=muted,fontSize=9.sp)
 
 }
