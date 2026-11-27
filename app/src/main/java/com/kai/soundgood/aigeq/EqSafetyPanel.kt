@@ -164,27 +164,43 @@ private val muted=Color(0xFF9CA3AF)
  var attack by remember {mutableIntStateOf(150)}
  var hold by remember {mutableIntStateOf(800)}
  var release by remember {mutableIntStateOf(1500)}
- var cut by remember(target,plan,ready,band){mutableFloatStateOf(0f)}
- var auto by remember(target,plan,ready,band,spectrumHealthy){mutableStateOf(false)}
- val active by rememberUpdatedState(if(auto) spectrumHealthy && peakHz!=null else trigger)
- LaunchedEffect(target,plan,ready,band,maxCut,attack,hold,release,spectrumHealthy,auto) {
-  cut=0f
+ var cuts by remember(target,plan,ready){mutableStateOf<Map<Int,Float>>(emptyMap())}
+ var centers by remember(target,plan,ready){mutableStateOf<Map<Int,String>>(emptyMap())}
+ val frequencies=centers.mapNotNull { (b,v)->v.toFloatOrNull()?.takeIf {it.isFinite() && it in 20f..20000f}?.let {b to it} }.toMap()
+ var auto by remember(target,plan,ready,spectrumHealthy){mutableStateOf(false)}
+ val matched=if(spectrumHealthy && peakHz!=null && peakHz>0) frequencies.filterKeys {it in plan}.filterValues {kotlin.math.abs(kotlin.math.ln(it.toDouble()/peakHz))<=kotlin.math.ln(2.0)/6}.minByOrNull {kotlin.math.abs(kotlin.math.ln(it.value.toDouble()/peakHz))}?.key else null
+ val activeBand by rememberUpdatedState(if(auto) matched else if(trigger) band else null)
+ LaunchedEffect(target,plan,ready,band,maxCut,attack,hold,release,spectrumHealthy,auto,centers) {
+  cuts=emptyMap()
   if(!ready || band !in plan) return@LaunchedEffect
-  val envelope=ManualDynamicEnvelope()
+  val envelopes=plan.associateWith {ManualDynamicEnvelope()}
   var previous=android.os.SystemClock.elapsedRealtime()
   while(isActive) {
    val now=android.os.SystemClock.elapsedRealtime()
-   cut=envelope.step(now,now-previous,active,maxCut,attack,hold,release)
+   val raw=envelopes.mapValues {(b,e)->e.step(now,now-previous,activeBand==b,maxCut,attack,hold,release)}
+   val total=raw.values.sumOf {kotlin.math.abs(it).toDouble()}
+   val scale=if(total>6.0) (6.0/total).toFloat() else 1f
+   cuts=raw.mapValues {it.value*scale}
    previous=now
    delay(40)
   }
  }
  Text("DYNAMIC · LOCAL TEST ONLY",color=gold,fontSize=10.sp)
  Row(verticalAlignment=Alignment.CenterVertically) {
-  TextButton(enabled=ready&&band in plan&&spectrumHealthy,onClick={trigger=false;auto=!auto}){Text(if(auto) "PEAK TRIGGER ON" else "PEAK TRIGGER OFF",fontSize=10.sp)}
+  TextButton(enabled=ready&&band in plan&&spectrumHealthy&&frequencies.isNotEmpty(),onClick={trigger=false;auto=!auto}){Text(if(auto) "PEAK TRIGGER ON" else "PEAK TRIGGER OFF",fontSize=10.sp)}
   Text(if(spectrumHealthy) (peakHz?.let {"Candidate $it Hz"} ?: "Listening") else "OSC NOT READY",color=muted,fontSize=9.sp)
  }
- Text(if(ready && band in plan) "B$band · relative cut ${"%.2f".format(cut)} dB" else "Select PLAN and verify baseline first",color=muted,fontSize=10.sp)
+ Text(if(ready && band in plan) "Matched: "+(matched?.let {"B$it"} ?: "NONE")+" · total cut "+ "%.2f".format(cuts.values.sum())+" dB" else "Select PLAN and verify baseline first",color=muted,fontSize=10.sp)
+ if(ready && band in plan) {
+  OutlinedTextField(value=centers[band] ?: "",onValueChange={auto=false;trigger=false;centers=centers+(band to it)},label={Text("B$band center Hz (manual preview)",fontSize=10.sp)},singleLine=true)
+  plan.sorted().forEach { b ->
+   Row(verticalAlignment=Alignment.CenterVertically) {
+    Text("B$b "+(frequencies[b]?.toString() ?: "unset")+" Hz",color=muted,fontSize=9.sp)
+    LinearProgressIndicator(progress={(-(cuts[b] ?: 0f)/3f).coerceIn(0f,1f)},modifier=Modifier.weight(1f).padding(horizontal=6.dp))
+    Text("%.2f".format(cuts[b] ?: 0f)+" dB",fontSize=9.sp)
+   }
+  }
+ }
  Row(verticalAlignment=Alignment.CenterVertically) {
   TextButton(enabled=ready&&plan.isNotEmpty(),onClick={trigger=false;band=plan.sorted().let {it[(it.indexOf(band)+1)%it.size]}}){Text("B$band",fontSize=10.sp)}
   TextButton(enabled=ready&&band in plan&&!auto,onClick={trigger=!trigger}){Text(if(trigger) "RELEASE" else "TRIGGER",fontSize=10.sp)}
