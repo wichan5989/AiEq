@@ -193,6 +193,14 @@ class MainActivity:ComponentActivity() {
    TargetKind.MAIN_LR -> "LR"
   } + if(oscPost) " POST" else " PRE"
   val currentOscRequest by rememberUpdatedState(requestedOscSource)
+  var controlOscSource by remember { mutableStateOf(false) }
+  val oscSourceId=when(activeRtaSource.kind) {
+   TargetKind.CHANNEL -> activeRtaSource.number+1
+   TargetKind.BUS -> activeRtaSource.number+49
+   TargetKind.MATRIX -> activeRtaSource.number+65
+   TargetKind.MAIN_LR -> 72
+  }
+  val oscCommand by rememberUpdatedState(if(controlOscSource) Pair(oscSourceId,oscPost) else null)
   var bridgeHost by remember { mutableStateOf("192.168.0.101") }
   var bridgeStatus by remember { mutableStateOf("NOT CONNECTED") }
   fun switchRtaSource(network:Boolean, usb:Boolean, device:Int?, osc:Boolean=false) {
@@ -301,9 +309,19 @@ class MainActivity:ComponentActivity() {
      M32SpectrumProbe().use { probe ->
       var renew=0L
       var last=0L
+      var sent:Pair<Int,Boolean>?=null
       while(kotlinx.coroutines.currentCoroutineContext().isActive && oscSpectrumRunning) {
        val now=android.os.SystemClock.elapsedRealtime()
-       if(now>=renew){probe.subscribe();renew=now+3000}
+       val command=oscCommand
+       if(command!=sent) {
+        sent=command
+        if(command!=null) {
+         probe.selectSource(command.first,command.second)
+         renew=0L
+         withContext(Dispatchers.Main){rtaLevels=List(31){-120f};rtaHistory=emptyList();spectrumStatus="SOURCE CHANGE · WAITING FOR READBACK"}
+        }
+       }
+       if(now>=renew){probe.subscribe();renew=now+1000}
        val reply=probe.read()
        if(reply!=null){last=now;withContext(Dispatchers.Main){
         val levels=detector.centers.map { hz ->
@@ -442,6 +460,7 @@ class MainActivity:ComponentActivity() {
         Text("OSC RTA · $spectrumStatus",color=gold,fontSize=10.sp)
         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
          Text("Wanted: $requestedOscSource",color=muted,fontSize=10.sp)
+         TextButton(onClick={controlOscSource=!controlOscSource}) {Text(if(controlOscSource) "LINK ON" else "LINK OFF",fontSize=10.sp)}
          TextButton(onClick={rtaSourceMode=RtaSourceMode.FOLLOW;rtaLocked=false;frozenRtaSource=null}) {Text("FOLLOW",fontSize=10.sp)}
          TextButton(onClick={if(!rtaLocked) frozenRtaSource=activeRtaSource else frozenRtaSource=null;rtaLocked=!rtaLocked}) {Text(if(rtaLocked) "UNLOCK" else "LOCK",fontSize=10.sp)}
          TextButton(onClick={oscPost=!oscPost}) {Text(if(oscPost) "POST" else "PRE",fontSize=10.sp)}
