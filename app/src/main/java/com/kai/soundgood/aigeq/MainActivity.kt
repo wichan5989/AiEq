@@ -105,9 +105,6 @@ class MainActivity:ComponentActivity() {
 
   var message by remember { mutableStateOf("Offline · GEQ write locked") }
   var peqSnapshot by remember { mutableStateOf<M32PeqSnapshot?>(null) }
-  var safetyBaseline by remember { mutableStateOf<M32PeqSnapshot?>(null) }
-  var safetyStatus by remember { mutableStateOf("NO BASELINE · EQ LOCKED") }
-  var safetyBusy by remember { mutableStateOf(false) }
   var livePeqBand by remember { mutableIntStateOf(1) }
   var livePeqGain by remember { mutableFloatStateOf(-1f) }
   var livePeqArmed by remember { mutableStateOf(false) }
@@ -525,6 +522,7 @@ class MainActivity:ComponentActivity() {
        }
        if(useOscSpectrum) {
         Text("OSC RTA · $spectrumStatus",color=gold,fontSize=10.sp)
+        OscUiSection {
         if(oscPeakEnabled && oscSpectrumRunning) {
          Text(oscPeakText,color=gold,fontSize=10.sp)
          Row(verticalAlignment=Alignment.CenterVertically) {
@@ -553,6 +551,7 @@ class MainActivity:ComponentActivity() {
           TextButton(onClick={oscReleaseMs=when(oscReleaseMs){500->1500;1500->3000;else->500}}) {Text("REL ${oscReleaseMs}ms",fontSize=10.sp)}
           TextButton(onClick={oscQ=when(oscQ){4f->8f;8f->12f;else->4f}}) {Text("Q $oscQ",fontSize=10.sp)}
          }
+        }
         }
         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
          Text("Wanted: $requestedOscSource",color=muted,fontSize=10.sp)
@@ -763,47 +762,7 @@ class MainActivity:ComponentActivity() {
         }
         Text("No band is assumed free. No automatic writes.",color=muted,fontSize=10.sp)
        }
-       Text("OSC EQ SAFETY · READ ONLY",color=gold,fontSize=10.sp)
-       Text(safetyStatus,color=muted,fontSize=10.sp)
-       Text("Baseline: "+(safetyBaseline?.target?.label ?: "NONE")+" · all bands reserved",color=muted,fontSize=10.sp)
-       Row(verticalAlignment=Alignment.CenterVertically) {
-        TextButton(enabled=connected&&!safetyBusy,onClick={
-         val requested=target
-         safetyBusy=true;safetyStatus="READING BASELINE · EQ LOCKED";safetyBaseline=null
-         scope.launch {
-          try {
-           val snap=withContext(Dispatchers.IO) {
-            val client=OscClient()
-            try {client.connect();M32LiveStateReader(client).inspectPeq(requested)} finally {client.close()}
-           }
-           if(snap.complete) {safetyBaseline=snap;safetyStatus="BASELINE CAPTURED · EQ LOCKED"}
-           else safetyStatus="INCOMPLETE BASELINE · EQ LOCKED"
-          } catch(e:Exception){safetyStatus="BASELINE FAILED · EQ LOCKED"}
-          finally{safetyBusy=false}
-         }
-        }) {Text("BACKUP PEQ",fontSize=10.sp)}
-        TextButton(enabled=connected&&!safetyBusy&&safetyBaseline?.target==target,onClick={
-         val baseline=safetyBaseline
-         val requested=target
-         safetyBusy=true
-         scope.launch {
-          try {
-           val snap=withContext(Dispatchers.IO) {
-            val client=OscClient()
-            try {client.connect();M32LiveStateReader(client).inspectPeq(requested)} finally {client.close()}
-           }
-           safetyStatus=when {
-            baseline==null || !snap.complete -> "READBACK INCOMPLETE · EQ LOCKED"
-            snap.values!=baseline.values -> "EQ CHANGED EXTERNALLY · EQ LOCKED"
-            else -> "BASELINE MATCH · EQ LOCKED"
-           }
-          } catch(e:Exception){safetyStatus="READBACK FAILED · EQ LOCKED"}
-          finally{safetyBusy=false}
-         }
-        }) {Text("VERIFY PEQ",fontSize=10.sp)}
-        TextButton(enabled=!safetyBusy,onClick={safetyBaseline=null;safetyStatus="NO BASELINE · EQ LOCKED"}) {Text("CLEAR",fontSize=10.sp)}
-       }
-       Text("RAM backup only. No restore or OSC EQ write.",color=muted,fontSize=9.sp)
+       EqSafetyPanel(target,connected)
        Text("LOCAL NOTCH BANK ${savedNotches.size}/4",color=gold,fontSize=10.sp)
        savedNotches.forEachIndexed { index, band ->
         Row(verticalAlignment=Alignment.CenterVertically) {
@@ -1182,3 +1141,5 @@ class MainActivity:ComponentActivity() {
   }
  }
 }
+
+@Composable private fun OscUiSection(content: @Composable () -> Unit) { content() }
