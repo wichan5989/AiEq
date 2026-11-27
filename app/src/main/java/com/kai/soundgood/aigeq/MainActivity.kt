@@ -191,18 +191,43 @@ class MainActivity:ComponentActivity() {
   var oscUndo by remember { mutableStateOf<List<Int>?>(null) }
   var oscAutoPreview by remember { mutableStateOf(false) }
   var oscFixed by remember { mutableStateOf(true) }
+  var oscAttackMs by remember { mutableIntStateOf(150) }
+  var oscDynamicHoldMs by remember { mutableIntStateOf(800) }
+  var oscReleaseMs by remember { mutableIntStateOf(1500) }
+  var oscQ by remember { mutableFloatStateOf(8f) }
+  var oscDepth by remember { mutableStateOf<Map<Int,Float>>(emptyMap()) }
   val oscAutoOn by rememberUpdatedState(oscAutoPreview)
   val oscFixedMode by rememberUpdatedState(oscFixed)
   val oscHitHz=oscPeakText.substringAfter("~","").substringBefore(" Hz").toIntOrNull()
   LaunchedEffect(oscHitHz,oscAutoPreview,oscFixed,oscSpectrumRunning,oscPeakEnabled) {
    val hz=oscHitHz
    if(!oscSpectrumRunning || !oscPeakEnabled) {oscBank=emptyList();oscUndo=null}
-   else if(!oscFixed && hz==null) oscBank=emptyList()
+   else if(!oscFixed && hz==null) { /* dynamic envelope releases existing slots */ }
    else if(oscAutoPreview && hz!=null && oscBank.size<4 && oscBank.none { kotlin.math.abs(kotlin.math.ln(it.toDouble()/hz))<0.08 }) {
     oscUndo=oscBank;oscBank=oscBank+hz
    }
   }
   val oscPeakOn by rememberUpdatedState(oscPeakEnabled)
+  LaunchedEffect(oscSpectrumRunning,oscPeakEnabled,oscBank,oscHitHz,oscFixed,oscAutoPreview,oscAttackMs,oscDynamicHoldMs,oscReleaseMs) {
+   if(!oscSpectrumRunning || !oscPeakEnabled || oscBank.isEmpty()) {oscDepth=emptyMap();return@LaunchedEffect}
+   oscDepth=oscDepth.filterKeys { it in oscBank }
+   val start=android.os.SystemClock.elapsedRealtime()
+   var previous=start
+   while(kotlinx.coroutines.currentCoroutineContext().isActive) {
+    val now=android.os.SystemClock.elapsedRealtime()
+    val dt=(now-previous).coerceIn(0L,100L).toFloat()
+    previous=now
+    oscDepth=oscBank.associateWith { hz ->
+     val old=oscDepth[hz] ?: 0f
+     val active=oscAutoPreview && (oscFixed || oscHitHz==hz)
+     if(active) (old+dt/oscAttackMs).coerceAtMost(1f)
+     else if(now-start<oscDynamicHoldMs) old
+     else (old-dt/oscReleaseMs).coerceAtLeast(0f)
+    }
+    if(!oscFixed && oscAutoPreview && now-start>=oscDynamicHoldMs+oscReleaseMs && oscDepth.values.all { it<=0f }) {oscBank=emptyList();break}
+    delay(40)
+   }
+  }
   var oscSensitivity by remember { mutableIntStateOf(1) }
   var oscHoldMs by remember { mutableStateOf(1200L) }
   val oscPeakThreshold by rememberUpdatedState(listOf(16f,12f,8f)[oscSensitivity])
@@ -497,7 +522,13 @@ class MainActivity:ComponentActivity() {
           TextButton(onClick={oscFixed=!oscFixed;oscBank=emptyList();oscUndo=null}) {Text(if(oscFixed) "FIXED" else "LIVE",fontSize=10.sp)}
           TextButton(onClick={oscAutoPreview=false;oscUndo?.let {oscBank=it};oscUndo=null},enabled=oscUndo!=null) {Text("UNDO",fontSize=10.sp)}
           TextButton(onClick={oscBank=emptyList();oscUndo=null;oscAutoPreview=false}) {Text("RESET",fontSize=10.sp)}
-          Text(oscBank.joinToString(" · ") {"~${it}Hz −1dB"},color=gold,fontSize=10.sp)
+          Text(oscBank.joinToString(" · ") {"~${it}Hz −${"%.1f".format(oscDepth[it] ?: 0f)}dB"},color=gold,fontSize=10.sp)
+         }
+         if(showGraphSettings) Row(verticalAlignment=Alignment.CenterVertically) {
+          TextButton(onClick={oscAttackMs=when(oscAttackMs){50->150;150->300;else->50}}) {Text("ATT ${oscAttackMs}ms",fontSize=10.sp)}
+          TextButton(onClick={oscDynamicHoldMs=when(oscDynamicHoldMs){300->800;800->1500;else->300}}) {Text("HOLD ${oscDynamicHoldMs}ms",fontSize=10.sp)}
+          TextButton(onClick={oscReleaseMs=when(oscReleaseMs){500->1500;1500->3000;else->500}}) {Text("REL ${oscReleaseMs}ms",fontSize=10.sp)}
+          TextButton(onClick={oscQ=when(oscQ){4f->8f;8f->12f;else->4f}}) {Text("Q $oscQ",fontSize=10.sp)}
          }
         }
         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
@@ -560,6 +591,21 @@ class MainActivity:ComponentActivity() {
          RtaDisplay(rtaLevels,rtaHistory,rtaMode,rtaFloor,rtaStyle,Modifier.fillMaxSize(),peakHold,meterDecay)
          if(useOscSpectrum && oscSpectrumRunning && oscPeakEnabled) {
           androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+           if(oscBank.isNotEmpty()) {
+            val curve=androidx.compose.ui.graphics.Path()
+            for(i in 0..240) {
+             val f=20.0*Math.pow(1000.0,i/240.0)
+             val cut=oscBank.sumOf { hz ->
+              val ratio=f/hz
+              val shape=oscQ*(ratio-1.0/ratio)
+              (oscDepth[hz] ?: 0f).toDouble()/(1.0+shape*shape)
+             }
+             val x=size.width*i/240f
+             val y=size.height*0.15f+(cut/6.0*size.height*0.65).toFloat()
+             if(i==0) curve.moveTo(x,y) else curve.lineTo(x,y)
+            }
+            drawPath(curve,Color(0xFFFFC857),style=androidx.compose.ui.graphics.drawscope.Stroke(width=2.dp.toPx()))
+           }
            (oscBank + listOfNotNull(oscHitHz)).distinct().forEach { hz ->
             val x=(kotlin.math.log10(hz/20.0)/3.0).toFloat().coerceIn(0f,1f)*size.width
             drawLine(if(hz==oscHitHz) Color(0xFFFF5252) else Color(0xFFFFC857),androidx.compose.ui.geometry.Offset(x,0f),androidx.compose.ui.geometry.Offset(x,size.height),strokeWidth=1.5.dp.toPx())
