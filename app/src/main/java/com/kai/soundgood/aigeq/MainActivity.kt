@@ -303,7 +303,7 @@ class MainActivity:ComponentActivity() {
          (maxOf(0,index-1)..minOf(99,index+1)).maxOf { reply[it] }
         }
         rtaLevels=levels;rtaHistory=(rtaHistory+listOf(levels)).takeLast(90);captureFrames++
-        spectrumStatus="ACTIVE · 100 BINS · MIXER SOURCE UNVERIFIED"
+        spectrumStatus="ACTIVE · 100 BINS · M32: ${probe.sourceLabel} · READ ONLY"
        }}
        else if(now-last>2000) withContext(Dispatchers.Main){spectrumStatus="WAITING FOR SPECTRUM PACKETS";rtaLevels=List(31){-120f};rtaHistory=emptyList()}
       }
