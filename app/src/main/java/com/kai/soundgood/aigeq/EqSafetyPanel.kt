@@ -40,7 +40,7 @@ import kotlinx.coroutines.withContext
 
 private val gold=Color(0xFFD9AA59)
 private val muted=Color(0xFF9CA3AF)
-@Composable internal fun EqSafetyPanel(target:EqTarget,connected:Boolean) {
+@Composable internal fun EqSafetyPanel(target:EqTarget,connected:Boolean,peakHz:Int?=null,spectrumHealthy:Boolean=false) {
  val scope=rememberCoroutineScope()
  val context=androidx.compose.ui.platform.LocalContext.current
  val prefs=remember(context){context.getSharedPreferences("peq_safety_v1",Context.MODE_PRIVATE)}
@@ -152,12 +152,12 @@ private val muted=Color(0xFF9CA3AF)
          restorePreview.forEach { Text(it,color=muted,fontSize=9.sp) }
         }
        }
-       ManualDynamicPreview(target,reserved,connected && !safetyBusy && safetyStatus=="BASELINE MATCH · EQ LOCKED")
+       ManualDynamicPreview(target,reserved,connected && !safetyBusy && safetyStatus=="BASELINE MATCH · EQ LOCKED",peakHz,spectrumHealthy)
        Text("Local persistent backup. PLAN is preview only. No restore or OSC EQ write.",color=muted,fontSize=9.sp)
 
 }
 
-@Composable private fun ManualDynamicPreview(target:EqTarget,plan:Set<Int>,ready:Boolean) {
+@Composable private fun ManualDynamicPreview(target:EqTarget,plan:Set<Int>,ready:Boolean,peakHz:Int?,spectrumHealthy:Boolean) {
  var band by remember(target,plan,ready){mutableIntStateOf(plan.minOrNull() ?: 0)}
  var trigger by remember(target,plan,ready){mutableStateOf(false)}
  var maxCut by remember {mutableFloatStateOf(1f)}
@@ -165,8 +165,9 @@ private val muted=Color(0xFF9CA3AF)
  var hold by remember {mutableIntStateOf(800)}
  var release by remember {mutableIntStateOf(1500)}
  var cut by remember(target,plan,ready,band){mutableFloatStateOf(0f)}
- val active by rememberUpdatedState(trigger)
- LaunchedEffect(target,plan,ready,band,maxCut,attack,hold,release) {
+ var auto by remember(target,plan,ready,band,spectrumHealthy){mutableStateOf(false)}
+ val active by rememberUpdatedState(if(auto) spectrumHealthy && peakHz!=null else trigger)
+ LaunchedEffect(target,plan,ready,band,maxCut,attack,hold,release,spectrumHealthy,auto) {
   cut=0f
   if(!ready || band !in plan) return@LaunchedEffect
   val envelope=ManualDynamicEnvelope()
@@ -178,11 +179,15 @@ private val muted=Color(0xFF9CA3AF)
    delay(40)
   }
  }
- Text("MANUAL DYNAMIC · LOCAL TEST ONLY",color=gold,fontSize=10.sp)
+ Text("DYNAMIC · LOCAL TEST ONLY",color=gold,fontSize=10.sp)
+ Row(verticalAlignment=Alignment.CenterVertically) {
+  TextButton(enabled=ready&&band in plan&&spectrumHealthy,onClick={trigger=false;auto=!auto}){Text(if(auto) "PEAK TRIGGER ON" else "PEAK TRIGGER OFF",fontSize=10.sp)}
+  Text(if(spectrumHealthy) (peakHz?.let {"Candidate $it Hz"} ?: "Listening") else "OSC NOT READY",color=muted,fontSize=9.sp)
+ }
  Text(if(ready && band in plan) "B$band · relative cut ${"%.2f".format(cut)} dB" else "Select PLAN and verify baseline first",color=muted,fontSize=10.sp)
  Row(verticalAlignment=Alignment.CenterVertically) {
   TextButton(enabled=ready&&plan.isNotEmpty(),onClick={trigger=false;band=plan.sorted().let {it[(it.indexOf(band)+1)%it.size]}}){Text("B$band",fontSize=10.sp)}
-  TextButton(enabled=ready&&band in plan,onClick={trigger=!trigger}){Text(if(trigger) "RELEASE" else "TRIGGER",fontSize=10.sp)}
+  TextButton(enabled=ready&&band in plan&&!auto,onClick={trigger=!trigger}){Text(if(trigger) "RELEASE" else "TRIGGER",fontSize=10.sp)}
   TextButton(onClick={maxCut=if(maxCut>=3f) 1f else maxCut+1f}){Text("MAX $maxCut dB",fontSize=10.sp)}
  }
  Row(verticalAlignment=Alignment.CenterVertically) {
