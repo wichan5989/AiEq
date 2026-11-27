@@ -130,6 +130,14 @@ class MainActivity:ComponentActivity() {
   }
 
   val detector= remember { FeedbackDetector() }
+  var feedbackThreshold by remember { mutableFloatStateOf(10f) }
+  var feedbackMaxCut by remember { mutableFloatStateOf(3f) }
+  var feedbackFixed by remember { mutableStateOf(true) }
+  var autoNotchPreview by remember { mutableStateOf(false) }
+  var caught by remember { mutableStateOf(listOf<Candidate>()) }
+  LaunchedEffect(targetKind,targetNumber,detecting,feedbackThreshold,feedbackFixed) {
+   caught=emptyList();candidate=null;detector.reset()
+  }
   val rtaAnalyzer= remember { RtaAnalyzer() }
   var rtaLevels by remember { mutableStateOf(List(31) {-120f}) }
   var captureFrames by remember { mutableIntStateOf(0) }
@@ -223,8 +231,11 @@ class MainActivity:ComponentActivity() {
         sessionGuard.completeFrame(android.os.SystemClock.elapsedRealtime())
         liveSession=sessionGuard.status(android.os.SystemClock.elapsedRealtime())
         rtaHistory=(rtaHistory+listOf(levels)).takeLast(90)
-        val next=detector.analyze(frame,System.currentTimeMillis())
-        if(next!=null && liveSession.canUseForAdvice) { candidate=next }
+        val next=detector.analyze(frame,System.currentTimeMillis(),feedbackThreshold.toDouble())
+        if(next!=null && liveSession.canUseForAdvice) {
+         candidate=next
+         caught=if(feedbackFixed) (caught.filterNot { it.hz==next.hz }+next).takeLast(8) else listOf(next)
+        } else if(!feedbackFixed) {caught=emptyList();candidate=null}
        }
       } else if(n==0) delay(10)
      }
@@ -431,7 +442,23 @@ class MainActivity:ComponentActivity() {
        ClassicDbMeter(captureHealth.rmsDbfs,captureHealth.peakDbfs,minInputDbfs,maxInputDbfs,
         onReset={minInputDbfs=null;maxInputDbfs=null},modifier=Modifier.fillMaxWidth().weight(1.1f))
        Column(Modifier.fillMaxWidth().weight(0.9f).background(panel,RoundedCornerShape(7.dp)).padding(5.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(3.dp)) {
-       Text("AI FEEDBACK ADVISOR",color=gold,fontWeight=FontWeight.Bold)
+       Text("FEEDBACK · CAUGHT",color=gold,fontWeight=FontWeight.Bold)
+       Text("THRESHOLD +${feedbackThreshold.toInt()} dB",color=Color.White,fontSize=10.sp)
+       Slider(value=feedbackThreshold,onValueChange={feedbackThreshold=it},valueRange=6f..24f,steps=17,modifier=Modifier.height(28.dp))
+       Text("MAX CUT PREVIEW −${feedbackMaxCut.toInt()} dB",color=Color.White,fontSize=10.sp)
+       Slider(value=feedbackMaxCut,onValueChange={feedbackMaxCut=it},valueRange=1f..3f,steps=1,modifier=Modifier.height(28.dp))
+       Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+        FilterChip(selected=feedbackFixed,onClick={feedbackFixed=true},label={Text("FIXED",fontSize=10.sp)})
+        FilterChip(selected=!feedbackFixed,onClick={feedbackFixed=false},label={Text("LIVE",fontSize=10.sp)})
+       }
+       Row(verticalAlignment=Alignment.CenterVertically) {
+        Switch(checked=autoNotchPreview,onCheckedChange={autoNotchPreview=it})
+        Text("AUTO NOTCH PREVIEW",color=gold,fontSize=10.sp)
+       }
+       caught.forEach { hit ->
+        Text("${hit.hz} Hz · +${"%.1f".format(hit.prominenceDb)} dB"+if(autoNotchPreview) " · proposed −${minOf(feedbackMaxCut.toDouble(),kotlin.math.abs(hit.suggestedCutDb))} dB" else "",color=Color.White,fontSize=10.sp)
+       }
+       OutlinedButton(onClick={caught=emptyList();candidate=null;detector.reset()},contentPadding=PaddingValues(horizontal=6.dp)) {Text("RESET CAUGHT",fontSize=10.sp)}
        Text("RMS ${"%.1f".format(captureHealth.rmsDbfs)} / PEAK ${"%.1f".format(captureHealth.peakDbfs)} dBFS",color=Color.White,style=MaterialTheme.typography.labelSmall)
        LinearProgressIndicator(progress=((captureHealth.rmsDbfs+60.0)/60.0).coerceIn(0.0,1.0).toFloat(),modifier=Modifier.fillMaxWidth())
        Text(when { !detecting -> "RTA stopped · start microphone capture"; !liveSession.canUseForAdvice -> "Checking audio frames / input route"; candidate!=null -> "DETECTED: ${candidate!!.hz} Hz"; else -> "Audio verified · listening for persistent feedback" },color=if(liveSession.canUseForAdvice) Color(0xFF58D69C) else muted,style=MaterialTheme.typography.bodySmall)
