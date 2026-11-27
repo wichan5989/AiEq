@@ -8,6 +8,10 @@ import android.media.AudioManager
 import android.content.Context
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.os.Build
+import android.content.Intent
+import android.provider.Settings
+import android.net.Uri
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -313,6 +317,13 @@ class MainActivity:ComponentActivity() {
       Text(if(connected) "M32 OSC REPLIED" else "M32 OFFLINE",color=if(connected) Color(0xFF58D69C) else muted)
       Text("READ ONLY · EQ LOCKED",color=gold)
       Spacer(Modifier.weight(1f))
+      OutlinedButton(onClick={
+       if(Build.VERSION.SDK_INT >= 26 && Settings.canDrawOverlays(this@MainActivity)) {
+        startService(Intent(this@MainActivity, MixingStationOverlayService::class.java))
+       } else {
+        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:"+packageName)))
+       }
+      },contentPadding=PaddingValues(horizontal=10.dp)) {Text("FLOATING AI")}
       OutlinedButton(onClick={advancedView=true},contentPadding=PaddingValues(horizontal=10.dp)) {Text("SETTINGS / ADVANCED")}
      }
      Row(Modifier.fillMaxWidth().weight(1f),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
