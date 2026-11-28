@@ -67,6 +67,7 @@ private val muted=Color(0xFF9CA3AF)
  var stored by remember(key){mutableStateOf(prefs.getString(key,null))}
  var reserved by remember(key){mutableStateOf(emptySet<Int>())}
  val currentKey by rememberUpdatedState(key)
+ var verifiedBands by remember(key,connected,stored,reserved){mutableStateOf<List<DecodedPeqBand>>(emptyList())}
  var restorePreview by remember(key,connected,stored,reserved){mutableStateOf<List<String>>(emptyList())}
  val currentPlan by rememberUpdatedState(reserved)
  val currentConnected by rememberUpdatedState(connected)
@@ -123,7 +124,7 @@ private val muted=Color(0xFF9CA3AF)
         TextButton(enabled=connected&&!safetyBusy&&stored!=null,onClick={
          val baseline=stored
          val plan=reserved
-         restorePreview=emptyList()
+         restorePreview=emptyList();verifiedBands=emptyList()
          val requested=target
          safetyBusy=true
          scope.launch {
@@ -133,7 +134,10 @@ private val muted=Color(0xFF9CA3AF)
             try {client.connect();M32LiveStateReader(client).inspectPeq(requested)} finally {client.close()}
            }
            if(currentKey==key && currentConnected && currentPlan==plan) {
-           if(baseline!=null && snap.complete) restorePreview=compareBackup(baseline,encode(snap),plan)
+           if(baseline!=null && snap.complete) {
+            restorePreview=compareBackup(baseline,encode(snap),plan)
+            if(restorePreview.isEmpty()) verifiedBands=LivePeqDecoder.decode(snap).takeIf {it.size==requested.peqBands} ?: emptyList()
+           }
            safetyStatus=when {
             baseline==null || !snap.complete -> "READBACK INCOMPLETE · EQ LOCKED"
             encode(snap)!=baseline -> "EQ CHANGED EXTERNALLY · EQ LOCKED"
@@ -152,28 +156,29 @@ private val muted=Color(0xFF9CA3AF)
          restorePreview.forEach { Text(it,color=muted,fontSize=9.sp) }
         }
        }
-       ManualDynamicPreview(target,reserved,connected && !safetyBusy && safetyStatus=="BASELINE MATCH · EQ LOCKED",peakHz,spectrumHealthy)
+       ManualDynamicPreview(target,reserved,connected && !safetyBusy && safetyStatus=="BASELINE MATCH · EQ LOCKED",peakHz,spectrumHealthy,verifiedBands)
        Text("Local persistent backup. PLAN is preview only. No restore or OSC EQ write.",color=muted,fontSize=9.sp)
 
 }
 
-@Composable private fun ManualDynamicPreview(target:EqTarget,plan:Set<Int>,ready:Boolean,peakHz:Int?,spectrumHealthy:Boolean) {
- var band by remember(target,plan,ready){mutableIntStateOf(plan.minOrNull() ?: 0)}
+@Composable private fun ManualDynamicPreview(target:EqTarget,plan:Set<Int>,ready:Boolean,peakHz:Int?,spectrumHealthy:Boolean,verifiedBands:List<DecodedPeqBand>) {
+ var band by remember(target,plan,ready,verifiedBands){mutableIntStateOf(verifiedBands.filter {it.number in plan && it.type==2}.minOfOrNull {it.number} ?: 0)}
  var trigger by remember(target,plan,ready){mutableStateOf(false)}
  var maxCut by remember {mutableFloatStateOf(1f)}
  var attack by remember {mutableIntStateOf(150)}
  var hold by remember {mutableIntStateOf(800)}
  var release by remember {mutableIntStateOf(1500)}
  var cuts by remember(target,plan,ready){mutableStateOf<Map<Int,Float>>(emptyMap())}
- var centers by remember(target,plan,ready){mutableStateOf<Map<Int,String>>(emptyMap())}
- val frequencies=centers.mapNotNull { (b,v)->v.toFloatOrNull()?.takeIf {it.isFinite() && it in 20f..20000f}?.let {b to it} }.toMap()
+ val eligible=verifiedBands.filter {it.number in plan && it.type==2 && it.hz.isFinite() && it.hz in 20.0..20000.0}
+ val frequencies=eligible.associate {it.number to it.hz.toFloat()}
+ val eligiblePlan=frequencies.keys
  var auto by remember(target,plan,ready,spectrumHealthy){mutableStateOf(false)}
  val matched=if(spectrumHealthy && peakHz!=null && peakHz>0) frequencies.filterKeys {it in plan}.filterValues {kotlin.math.abs(kotlin.math.ln(it.toDouble()/peakHz))<=kotlin.math.ln(2.0)/6}.minByOrNull {kotlin.math.abs(kotlin.math.ln(it.value.toDouble()/peakHz))}?.key else null
  val activeBand by rememberUpdatedState(if(auto) matched else if(trigger) band else null)
- LaunchedEffect(target,plan,ready,band,maxCut,attack,hold,release,spectrumHealthy,auto,centers) {
+ LaunchedEffect(target,plan,ready,band,maxCut,attack,hold,release,spectrumHealthy,auto,verifiedBands) {
   cuts=emptyMap()
-  if(!ready || band !in plan) return@LaunchedEffect
-  val envelopes=plan.associateWith {ManualDynamicEnvelope()}
+  if(!ready || band !in eligiblePlan) return@LaunchedEffect
+  val envelopes=eligiblePlan.associateWith {ManualDynamicEnvelope()}
   var previous=android.os.SystemClock.elapsedRealtime()
   while(isActive) {
    val now=android.os.SystemClock.elapsedRealtime()
@@ -187,23 +192,24 @@ private val muted=Color(0xFF9CA3AF)
  }
  Text("DYNAMIC · LOCAL TEST ONLY",color=gold,fontSize=10.sp)
  Row(verticalAlignment=Alignment.CenterVertically) {
-  TextButton(enabled=ready&&band in plan&&spectrumHealthy&&frequencies.isNotEmpty(),onClick={trigger=false;auto=!auto}){Text(if(auto) "PEAK TRIGGER ON" else "PEAK TRIGGER OFF",fontSize=10.sp)}
+  TextButton(enabled=ready&&band in eligiblePlan&&spectrumHealthy&&frequencies.isNotEmpty(),onClick={trigger=false;auto=!auto}){Text(if(auto) "PEAK TRIGGER ON" else "PEAK TRIGGER OFF",fontSize=10.sp)}
   Text(if(spectrumHealthy) (peakHz?.let {"Candidate $it Hz"} ?: "Listening") else "OSC NOT READY",color=muted,fontSize=9.sp)
  }
- Text(if(ready && band in plan) "Matched: "+(matched?.let {"B$it"} ?: "NONE")+" · total cut "+ "%.2f".format(cuts.values.sum())+" dB" else "Select PLAN and verify baseline first",color=muted,fontSize=10.sp)
- if(ready && band in plan) {
-  OutlinedTextField(value=centers[band] ?: "",onValueChange={auto=false;trigger=false;centers=centers+(band to it)},label={Text("B$band center Hz (manual preview)",fontSize=10.sp)},singleLine=true)
-  plan.sorted().forEach { b ->
+ Text(if(ready && band in eligiblePlan) "Matched: "+(matched?.let {"B$it"} ?: "NONE")+" · total cut "+ "%.2f".format(cuts.values.sum())+" dB" else "Select PLAN and verify baseline first",color=muted,fontSize=10.sp)
+ if(ready && band in eligiblePlan) {
+  Text("OSC decoded F/G/Q · provisional mapping · preview only",color=muted,fontSize=9.sp)
+  eligiblePlan.sorted().forEach { b ->
    Row(verticalAlignment=Alignment.CenterVertically) {
-    Text("B$b "+(frequencies[b]?.toString() ?: "unset")+" Hz",color=muted,fontSize=9.sp)
+    val info=eligible.first {it.number==b}
+    Text("B$b "+ "%.0f Hz · %+.1f dB · Q %.2f".format(info.hz,info.gainDb,info.q),color=muted,fontSize=9.sp)
     LinearProgressIndicator(progress={(-(cuts[b] ?: 0f)/3f).coerceIn(0f,1f)},modifier=Modifier.weight(1f).padding(horizontal=6.dp))
     Text("%.2f".format(cuts[b] ?: 0f)+" dB",fontSize=9.sp)
    }
   }
  }
  Row(verticalAlignment=Alignment.CenterVertically) {
-  TextButton(enabled=ready&&plan.isNotEmpty(),onClick={trigger=false;band=plan.sorted().let {it[(it.indexOf(band)+1)%it.size]}}){Text("B$band",fontSize=10.sp)}
-  TextButton(enabled=ready&&band in plan&&!auto,onClick={trigger=!trigger}){Text(if(trigger) "RELEASE" else "TRIGGER",fontSize=10.sp)}
+  TextButton(enabled=ready&&eligiblePlan.isNotEmpty(),onClick={trigger=false;band=eligiblePlan.sorted().let {it[(it.indexOf(band)+1)%it.size]}}){Text("B$band",fontSize=10.sp)}
+  TextButton(enabled=ready&&band in eligiblePlan&&!auto,onClick={trigger=!trigger}){Text(if(trigger) "RELEASE" else "TRIGGER",fontSize=10.sp)}
   TextButton(onClick={maxCut=if(maxCut>=3f) 1f else maxCut+1f}){Text("MAX $maxCut dB",fontSize=10.sp)}
  }
  Row(verticalAlignment=Alignment.CenterVertically) {
